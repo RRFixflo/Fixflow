@@ -2162,7 +2162,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && /^\/sent-emails(\/\d+(\/file\/\d+)?)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
     if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
-    if (path === '/crm' || /^\/crm\/(note|meta|move|archive|recommended|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
+    if (path === '/crm' || /^\/crm\/(latest|note|meta|move|archive|recommended|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
     if (method === 'POST' && path === '/assistant') return true;   // Ask Fixflow: staff only get applicants from a pasted enquiry (checked in the route)
     if (method === 'GET' && path === '/lead-hook') return true;
     if ((method === 'GET' && /^\/outlook(\/connect)?$/.test(path)) || (method === 'DELETE' && /^\/outlook\/[^/]+$/.test(path))) return true;   // their own Outlook (others' refused in outlook.js)

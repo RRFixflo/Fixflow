@@ -591,12 +591,19 @@
   .pv-editbox { margin: 8px 0 12px; padding: 12px; border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 12px; }
   @media (max-width: 640px) { .off-kind, .off-pvr { grid-template-columns: 1fr; } }
   .sent-bar { display: flex; gap: 8px; flex-wrap: wrap; }
-  #leadPop { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 9000; width: min(460px, calc(100vw - 24px)); background: var(--dk-bg-fff, #fff); border: 3px solid var(--dk-fg-067647, #067647); border-radius: 16px; box-shadow: 0 18px 50px rgba(16,24,40,.35); padding: 12px 14px; animation: lpIn .35s ease-out; }
-  #leadPop .lp-h { font-weight: 800; font-size: 17px; color: var(--dk-fg-067647, #067647); margin-bottom: 6px; }
-  #leadPop .lp-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--dk-bd-e6e8ec, #e6e8ec); }
-  #leadPop .lp-t { min-width: 0; } #leadPop .lp-t b { display: block; } #leadPop .lp-t span { display: block; font-size: 13px; color: var(--dk-fg-667085, #667085); overflow-wrap: anywhere; }
-  #leadPop .lp-f { display: flex; gap: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-top: 8px; }
-  @keyframes lpIn { from { opacity: 0; transform: translate(-50%, -20px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  /* New-lead alert (staff logins only): a small card in the bottom-right corner, under any open window, that
+     folds itself to a pill after 15 seconds so it never covers what someone is working on. */
+  #leadPop { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); z-index: 40; width: min(360px, calc(100vw - 32px)); background: var(--dk-bg-fff, #fff); border: 2px solid var(--dk-fg-067647, #067647); border-radius: 14px; box-shadow: 0 12px 34px rgba(16,24,40,.28); padding: 10px 12px; animation: lpIn .3s ease-out; font-size: 14px; }
+  #leadPop .lp-h { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 15px; color: var(--dk-fg-067647, #067647); margin-bottom: 4px; }
+  #leadPop .lp-h span { flex: 1; min-width: 0; }
+  #leadPop .lp-x { border: 0; background: none; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; color: var(--dk-fg-667085, #667085); padding: 2px 6px; border-radius: 6px; }
+  #leadPop .lp-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 6px 0; border-top: 1px solid var(--dk-bd-e6e8ec, #e6e8ec); }
+  #leadPop .lp-t { min-width: 0; } #leadPop .lp-t b { display: block; } #leadPop .lp-t span { display: block; font-size: 12.5px; color: var(--dk-fg-667085, #667085); overflow-wrap: anywhere; }
+  #leadPop .lp-f { display: flex; gap: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  #leadPop.lp-min { width: auto; padding: 0; border-radius: 999px; }
+  #leadPop .lp-pill { border: 0; background: var(--dk-fg-067647, #067647); color: var(--on-ink, #fff); font: inherit; font-weight: 700; padding: 9px 16px; border-radius: 999px; cursor: pointer; }
+  @media (max-width: 900px) { #leadPop { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); } }
+  @keyframes lpIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { #leadPop { animation: none; } }
   .mu-top { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 8px 0; }
   .mu-tile { border: 1px solid var(--dk-bd-e6e8ec, #e6e8ec); border-radius: 12px; padding: 10px 12px; }
@@ -9687,7 +9694,10 @@
     } catch (e) {}
   }
   function leadLine(x){ return (x.name || 'No name') + (x.address ? ' — ' + shortAddr(x.address) : ''); }
+  var leadMin = false, leadMinT = null;
   function leadAlert(list){
+    if (!staffMode) return;   // the pop-up is for staff logins only (the owner asked); the owner has the menu badges and phone alerts
+    leadMin = false; clearTimeout(leadMinT); leadMinT = setTimeout(function(){ leadMin = true; leadDraw(); }, 15000);
     list.forEach(function(x){ if (!leadQ.some(function(y){ return y.ref === x.ref; })) leadQ.unshift(x); });
     leadQ = leadQ.slice(0, 6); leadDraw(); leadChime();
     try { if ('Notification' in window && Notification.permission === 'granted') list.slice(0, 3).forEach(function(x){
@@ -9700,8 +9710,9 @@
   function leadDraw(){
     var box = $('leadPop'); if (!box) { box = document.createElement('div'); box.id = 'leadPop'; box.setAttribute('role', 'alert'); document.body.appendChild(box); }
     if (!leadQ.length) { box.hidden = true; leadStopFlash(); return; }
-    box.hidden = false;
-    box.innerHTML = '<div class="lp-h">🆕 ' + (leadQ.length === 1 ? 'New lead just came in' : leadQ.length + ' new leads just came in') + '</div>' +
+    box.hidden = false; box.classList.toggle('lp-min', leadMin); box.setAttribute('role', 'status');
+    if (leadMin) { box.innerHTML = '<button type="button" class="lp-pill" data-lp-show title="Show the new leads">🆕 ' + leadQ.length + ' new lead' + (leadQ.length === 1 ? '' : 's') + '</button>'; return; }
+    box.innerHTML = '<div class="lp-h"><span>🆕 ' + (leadQ.length === 1 ? 'New lead just came in' : leadQ.length + ' new leads just came in') + '</span><button type="button" class="lp-x" data-lp-min title="Make it smaller" aria-label="Make it smaller">–</button></div>' +
       leadQ.map(function(x, i){ var xd = x.data || {}, src = x.type === 'rm' ? 'Rightmove' : x.type === 'viewing' ? 'Website viewing request' : x.type === 'call' ? 'Phone message' + (xd.call_no > 1 ? ' · ' + nth(xd.call_no) + ' call' : '') + (xd.known ? ' · ' + xd.known.label + (xd.known.name && xd.known.name !== x.name ? ' ' + xd.known.name : '') : '') : isAppl(x) ? 'Applicant' : 'Landlord enquiry';
         return '<div class="lp-row"><div class="lp-t"><b>' + esc(x.name || 'No name') + '</b><span>' + esc(src + (x.address ? ' · ' + shortAddr(x.address) : '') + (x.phone ? ' · ' + x.phone : '')) + '</span></div><button type="button" class="btn small primary" data-lp-open="' + i + '">Open</button></div>'; }).join('') +
       '<div class="lp-f">' + ('Notification' in window && Notification.permission === 'default' ? '<button type="button" class="btn small" data-lp-perm>🔔 Also alert me when Fixflow is in the background</button>' : '<span></span>') + '<button type="button" class="btn small ghost" data-lp-ok>Got it</button></div>';
@@ -9712,6 +9723,8 @@
   }
   document.addEventListener('click', function(e){
     var b = e.target.closest('#leadPop button'); if (!b) return;
+    if (b.hasAttribute('data-lp-show')) { leadMin = false; clearTimeout(leadMinT); leadDraw(); return; }
+    if (b.hasAttribute('data-lp-min')) { leadMin = true; clearTimeout(leadMinT); leadDraw(); return; }
     if (b.hasAttribute('data-lp-open')) { var x = leadQ[+b.dataset.lpOpen]; if (x) leadOpen(x); }
     else if (b.hasAttribute('data-lp-ok')) { leadQ = []; leadDraw(); }
     else if (b.hasAttribute('data-lp-perm')) { try { Notification.requestPermission().then(function(){ leadDraw(); }); } catch (e) {} }
