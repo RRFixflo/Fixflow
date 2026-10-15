@@ -5217,7 +5217,7 @@ module.exports = function mountJobs(app, opts) {
     let x = null; Object.keys(all).forEach(function (k) { all[k].forEach(function (s) { if (s.tid === tid && s.from === from) x = s; }); });
     if (!x || !x.m) return nf();
     const m = x.m, money = function (v) { return (v < 0 ? '−' : '') + '£' + Math.abs(Number(v) || 0).toFixed(2); }, day = function (v) { return certDay(String(v || '').slice(0, 10)); };
-    const rowsIn = ['<tr><td>Rent ' + htmlEsc(day(m.from)) + ' – ' + htmlEsc(day(m.to)) + '</td><td class="a">' + money(m.rent) + '</td></tr>']
+    const rowsIn = ['<tr><td>Rent ' + htmlEsc(day(m.from)) + ' – ' + htmlEsc(day(m.to)) + ((m.paid_in || []).length ? '<div style="font-size:.86em;color:#555;margin-top:3px">Paid in ' + m.paid_in.length + ' payments:' + m.paid_in.map(function (x) { return '<br>· ' + money(x.amount) + (x.date ? ' received ' + htmlEsc(day(x.date)) : '') + (x.who ? ' from ' + htmlEsc(x.who) : ''); }).join('') + '</div>' : '') + '</td><td class="a">' + money(m.rent) + '</td></tr>']
       .concat(m.deposit ? ['<tr><td>Deposit</td><td class="a">' + money(m.deposit) + '</td></tr>'] : [])
       .concat((m.credits || []).map(function (c) { return '<tr><td>' + htmlEsc(c.label) + '</td><td class="a">' + money(c.amount) + '</td></tr>'; }));
     // Repair charges link to the repair itself (progress, photos, notes) and its invoice.
@@ -10941,6 +10941,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
       out[out.length - 1].check = stmtCheck(d, from, rent, f.fees, balance);
       const rc0 = (d.rent_rcvd || {})[from];
       if (rc0 && rc0.amount != null && Number(rc0.amount) > 0 && Math.abs(Number(rc0.amount) - rent) > 0.01) out[out.length - 1].fix_rent = { was: Number(rc0.amount), rent: rent };
+      // How the rent came in when it was paid in more than one payment (e.g. each tenant paid their share):
+      // listed under the rent on the statement so the landlord can see each payment.
+      const pin = ((d.rent_parts || {})[from] || []).filter(function (x) { return x && Number(x.amount) > 0; });
+      if (pin.length > 1) out[out.length - 1].paid_in = pin.map(function (x) { return { amount: r2(Number(x.amount)), date: String(x.date || x.at || '').slice(0, 10) || null, who: x.who || null }; });
       carry = balance < -0.004 ? -balance : 0;
     }
     return out;
