@@ -32,8 +32,13 @@ const SYSTEM = [
   '- If the caller refuses to give some details, accept that and carry on.',
   '- When you have their name, what it is about, and at least one way to contact them (and you have read back the email if they gave one), thank them, say the team will be in touch, say goodbye, and set done to true.',
   '- If the caller says goodbye or wants to end the call, end politely and set done to true.',
-  'Always fill the JSON fields with everything you know so far (empty string if unknown). "summary" is one or two plain sentences for the team describing the call.'
+  'Answer with JSON: "reply" (what to say next), "done" (true once the call should end) and "urgent". Nothing else — the details are taken from the conversation after the call.'
 ].join('\n');
+// During the call Claude only writes the next line (a short answer = a short pause for the caller); the details
+// (name, email, what it's about, …) are read from the whole conversation once, after the call (extract()).
+const TURN = { type: 'object', additionalProperties: false, required: ['reply', 'done', 'urgent'],
+  properties: { reply: { type: 'string', description: 'What to say to the caller next (spoken aloud).' }, done: { type: 'boolean' }, urgent: { type: 'boolean' } } };
+const EXTRACT = 'Below is a phone call between Residential Realtors\' phone assistant and a caller (a London letting agent). Fill in the JSON with what the caller said — empty string for anything not said; never guess. Use the spelling the caller gave for names and emails (a caller line may end with [spelt: …]). "summary": one or two plain sentences for the team describing the call. "reply" and "done": leave "reply" empty and "done" true.';
 
 const SCHEMA = {
   type: 'object', additionalProperties: false,
@@ -104,7 +109,7 @@ module.exports = function (app, opts) {
       if (last.role === role) last.content += '\n' + t.text; else msgs.push({ role: role, content: t.text }); });
     if (msgs[msgs.length - 1].role !== 'user') msgs.push({ role: 'user', content: '[silence]' });
     try {
-      const req = { model: MODEL, max_tokens: 2000, output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } }, system: SYSTEM, messages: msgs };
+      const req = { model: MODEL, max_tokens: 600, output_config: { effort: 'low', format: { type: 'json_schema', schema: TURN } }, system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }], messages: msgs };
       // Haiku: thinking off, plain request (no server-side fallback). Other models keep the fallback and low effort —
       // Sonnet with thinking set to between_tools was tried and was slower on the line (8 s vs about 2 s), so it's back.
       const fast = /haiku/.test(MODEL) ? { type: 'disabled' } : null, t0 = Date.now();
@@ -115,6 +120,17 @@ module.exports = function (app, opts) {
       const t = (r.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
       const o = JSON.parse(t); return o && typeof o.reply === 'string' ? o : null;
     } catch (e) { console.error('Phone answering: Claude', e.status || '', e.message); return null; }
+  }
+  // After the call: everything the caller told us, from the whole conversation (no hurry — the caller has gone).
+  async function extract(call) {
+    const c = claude(); if (!c) return null;
+    const text = '[Caller\'s number: ' + (call.from_no ? spoken(call.from_no) : 'withheld') + ']\n' + (call.turns || []).map(function (t) { return (t.role === 'assistant' ? 'Assistant: ' : 'Caller: ') + t.text; }).join('\n');
+    try {
+      const req = { model: MODEL, max_tokens: 2000, output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } }, system: SYSTEM + '\n\n' + EXTRACT, messages: [{ role: 'user', content: text }] };
+      const r = /haiku/.test(MODEL) ? await c.messages.create(req, { timeout: 30000 }) : await c.beta.messages.create(Object.assign({ betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }, req), { timeout: 30000 });
+      const t = (r.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
+      return JSON.parse(t);
+    } catch (e) { console.error('Phone answering: reading the call', e.status || '', e.message); return null; }
   }
   // If Claude can't be reached: ask for what's still missing, in order.
   function scripted(info, n) {
@@ -152,8 +168,11 @@ module.exports = function (app, opts) {
   async function finish(sid) {
     const p = await pool(); if (!p || !sid) return;
     const call = (await p.query('UPDATE voice_calls SET ended_at = now() WHERE sid = $1 AND ended_at IS NULL RETURNING *', [sid])).rows[0]; if (!call) return;   // only once, even if the hang-up and the last turn arrive together
-    const info = call.info || {}, said = (call.turns || []).filter(function (t) { return t.role === 'caller'; });
+    const said = (call.turns || []).filter(function (t) { return t.role === 'caller'; });
     if (!said.length && !call.from_no) return;   // nothing said and no number: nothing to call back
+    const info = Object.assign({}, call.info || {}), got = said.length ? await extract(call) : null;
+    if (got) ['name', 'email', 'phone', 'about', 'address', 'category', 'adults', 'children', 'move_date', 'income', 'guarantor', 'summary'].forEach(function (k) { if (got[k]) info[k] = String(got[k]).slice(0, 500); });
+    if (got && got.urgent) info.urgent = true;
     const phone = String(info.phone || '').replace(/[^\d+ ]/g, '').trim() || String(call.from_no || '').replace(/^\+44/, '0'), email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(info.email || '').replace(/\s+/g, '')) ? String(info.email).replace(/\s+/g, '').toLowerCase() : null;
     const name = String(info.name || '').trim() || 'Caller ' + (String(call.from_no || '').replace(/^\+44/, '0') || '(number withheld)');
     const data = { kind: 'call', message: info.summary || info.about || (said.length ? 'Caller said: ' + said.map(function (t) { return t.text; }).join(' / ').slice(0, 600) : 'Rang and didn’t leave a message.'),
