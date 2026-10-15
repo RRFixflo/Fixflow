@@ -15618,7 +15618,7 @@
       (unk.length ? '<h4 class="rs-h">No location found (' + unk.length + ')</h4>' + unk.map(row).join('') : '') +
       '<details class="rs-set"' + (meta.canManageUsers ? '' : ' hidden') + '><summary>⚙ Radius, limit and review dates</summary><p class="muted-note" style="margin:4px 0">Ask Rightmove (your account manager) for the exact radius they use around the branch. The limit is the national average they quote (13 for lettings in October 2026).</p>' +
         '<div class="rs-form"><label>Radius (miles)<input class="inp" id="rsRadius" inputmode="decimal" value="' + esc(String(d.radius)) + '"></label><label>Limit<input class="inp" id="rsLimit" inputmode="numeric" value="' + esc(String(d.limit)) + '"></label><label>Review from<input class="inp" id="rsFrom" type="date" value="' + esc(d.review_from || '') + '"></label><label>Review to<input class="inp" id="rsTo" type="date" value="' + esc(d.review_to || '') + '"></label><button type="button" class="btn small primary" id="rsSave">Save</button></div></details>' +
-      '<p class="muted-note" style="margin:8px 0 0">Distances from the office postcode to each advert’s map pin on Rightmove (“approx.” = the postcode area’s centre). From a week before the review until it ends, the owner’s phone is told each morning if you’re over the limit.</p>';
+      '<p class="muted-note" style="margin:8px 0 0">Distances from the office postcode to each advert’s map pin on Rightmove (“approx.” = the postcode area’s centre). Whenever you’re over the limit, the owner’s phone is told each morning.</p>';
   }
   document.addEventListener('click', function(e){
     if (!e.target.closest || !e.target.closest('#rsSave')) return;
