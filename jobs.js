@@ -14664,15 +14664,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (Array.isArray(v)) { if (v.length && v.every(function (o) { return o && typeof o === 'object' && o.id != null && (o.displayAddress || o.propertyUrl); })) v.forEach(function (o) { out.push(o); }); else v.forEach(function (o) { rmDig(o, out, depth + 1); }); return; }
     if (typeof v === 'object') Object.keys(v).forEach(function (k) { rmDig(v[k], out, depth + 1); });
   }
-  async function rmFetchBranch(branch, diag) {
+  async function rmFetchBranch(branch, diag, channel) {
+    const ch = channel === 'BUY' ? 'BUY' : 'RENT', page = ch === 'BUY' ? '/property-for-sale/' : '/property-to-rent/';
     const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept': 'application/json, text/html;q=0.9, */*;q=0.8', 'Accept-Language': 'en-GB,en;q=0.9' };
     const seen = {}, items = [], loc = 'BRANCH%5E' + encodeURIComponent(branch);
     const add = function (list) { const before = items.length; list.map(rmNorm).filter(Boolean).forEach(function (x) { if (!seen[x.id]) { seen[x.id] = 1; items.push(x); } }); return items.length - before; };
     // Rightmove's newer search data, the older one, then the page itself (its embedded data).
     const sources = [
-      function (i) { return RM_BASE + '/api/property-search/listing/search?searchLocation=&useLocationIdentifier=true&locationIdentifier=' + loc + '&channel=RENT&index=' + i + '&sortType=6&includeLetAgreed=true&_includeLetAgreed=on'; },
-      function (i) { return RM_BASE + '/api/_search?locationIdentifier=' + loc + '&numberOfPropertiesPerPage=24&radius=0.0&sortType=6&index=' + i + '&includeLetAgreed=true&viewType=LIST&channel=RENT&areaSizeUnit=sqft&currencyCode=GBP&isFetching=false'; },
-      function (i) { return RM_BASE + '/property-to-rent/find.html?locationIdentifier=' + loc + '&includeLetAgreed=true&index=' + i; }
+      function (i) { return RM_BASE + '/api/property-search/listing/search?searchLocation=&useLocationIdentifier=true&locationIdentifier=' + loc + '&channel=' + ch + '&index=' + i + '&sortType=6&includeLetAgreed=true&_includeLetAgreed=on' + (ch === 'BUY' ? '&includeSSTC=true&_includeSSTC=on' : ''); },
+      function (i) { return RM_BASE + '/api/_search?locationIdentifier=' + loc + '&numberOfPropertiesPerPage=24&radius=0.0&sortType=6&index=' + i + '&includeLetAgreed=true' + (ch === 'BUY' ? '&includeSSTC=true' : '') + '&viewType=LIST&channel=' + ch + '&areaSizeUnit=sqft&currencyCode=GBP&isFetching=false'; },
+      function (i) { return RM_BASE + page + 'find.html?locationIdentifier=' + loc + '&includeLetAgreed=true' + (ch === 'BUY' ? '&includeSSTC=true' : '') + '&index=' + i; }
     ];
     let src = -1;
     for (let index = 0; index < 240; index += 24) {
@@ -14903,53 +14904,106 @@ document.querySelectorAll('.lcu').forEach(function(box){
     for (const c of codes) { if (!c || oc[c]) continue; try { const j = await (await fetch('https://api.postcodes.io/outcodes/' + encodeURIComponent(c), { signal: AbortSignal.timeout(8000) })).json(); if (j.result && j.result.latitude) { oc[c] = [j.result.latitude, j.result.longitude]; changed = true; } } catch (e) {} }
     return { oc: oc, changed: changed };
   }
+  // One channel's adverts measured against Rightmove's two tests. Adverts whose place can't be found count as far away
+  // (the safe side), so the check never says "safe" when it might not be.
+  function rsMeasure(list, radius, limit) {
+    const live = list.filter(function (x) { return !x.agreed; });
+    const far = live.filter(function (x) { return x.dist != null && x.dist > radius; }).length, unknown = live.filter(function (x) { return x.dist == null; }).length;
+    const outside = far + unknown, inside = live.length - outside, share = live.length ? Math.round(outside / live.length * 100) : 0;
+    const fails = function (o, i) { return o > limit && o >= i; };
+    const qualifies = fails(outside, inside), close = !qualifies && fails(outside + 2, Math.max(0, inside - 2));
+    return { live: live.length, agreed: list.length - live.length, outside: outside, far: far, inside: inside, unknown: unknown, share: share, limit: limit,
+      qualifies: qualifies, close: close, take_off: qualifies ? Math.min(outside - limit, outside - inside + 1) : 0, add_near: qualifies ? outside - inside + 1 : 0,
+      by_radius: [1, 1.5, 2, 3, 5].map(function (mi) { const o = live.filter(function (x) { return x.dist == null || x.dist > mi; }).length; return { miles: mi, outside: o, inside: live.length - o, risk: fails(o, live.length - o) }; }) };
+  }
+  // Averages over the days recorded (Rightmove judges the daily average over its review period, not one day).
+  function rsAvg(hist, from, to, k) {
+    const days = Object.keys(hist || {}).filter(function (d) { return d >= from && d <= to && hist[d] && hist[d][k] != null; });
+    if (!days.length) return null;
+    const sum = function (f) { return days.reduce(function (a, d) { return a + (Number(hist[d][k][f]) || 0); }, 0); };
+    const o = Math.round(sum('o') / days.length * 10) / 10, i = Math.round(sum('i') / days.length * 10) / 10;
+    return { days: days.length, from: days.sort()[0], to: days[days.length - 1], outside: o, inside: i, share: o + i ? Math.round(o / (o + i) * 100) : 0 };
+  }
   async function rmStock(p) {
-    const set = await rsSettings(p), c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], v = c && listFresh('rightmove_list', c.value);
-    const items = (v && v.items) || [], office = await rsGeo(p, set);
-    const need = items.filter(function (x) { return !(x.lat && x.lng); }).map(function (x) { return rmOutcode(x.address); }).filter(function (o, i, a) { return o && a.indexOf(o) === i; });
+    const set = await rsSettings(p), office = await rsGeo(p, set);
+    const getList = async function (key) { const c = (await p.query("SELECT value FROM app_settings WHERE key = $1", [key])).rows[0]; return c ? listFresh(key, c.value) : null; };
+    const v = await getList('rightmove_list'), vs = await getList('rightmove_sales');
+    const items = (v && v.items) || [], sitems = (vs && vs.items) || [];
+    const need = items.concat(sitems).filter(function (x) { return !(x.lat && x.lng); }).map(function (x) { return rmOutcode(x.address); }).filter(function (o, i, a) { return o && a.indexOf(o) === i; });
     const og = await rsOutcodes(p, set, need);
     if (og.changed || (office && !set.office)) await p.query("INSERT INTO app_settings (key, value) VALUES ('rm_stock', $1) ON CONFLICT (key) DO UPDATE SET value = app_settings.value || $1", [JSON.stringify({ oc: og.oc, office: office })]).catch(function () {});
     const av = (await p.query("SELECT id, address, rm_id, dream_rm, status FROM available_props")).rows, byRm = {}, dreamOf = {};
     av.forEach(function (a) { if (a.rm_id && a.rm_id !== 'none' && a.status === 'available') byRm[a.rm_id] = a; (a.dream_rm || []).forEach(function (d) { dreamOf[d] = a; }); });
-    const list = items.map(function (x) {
+    const shape = function (x, sales) {
       const exact = !!(x.lat && x.lng), oc = rmOutcode(x.address), ll = exact ? [x.lat, x.lng] : og.oc[oc];
       const dist = office && ll ? Math.round(rsMiles(office.lat, office.lng, ll[0], ll[1]) * 100) / 100 : null;
-      const agreed = /let agreed|under offer/i.test(x.status || '');
-      const home = byRm[x.id], dream = dreamOf[x.id];
+      const agreed = sales ? /sold stc|sale agreed|under offer|sold subject|\bsstc\b/i.test(x.status || '') : /let agreed|under offer/i.test(x.status || '');
+      const home = sales ? null : byRm[x.id], dream = sales ? null : dreamOf[x.id];
       return { id: x.id, address: x.address, beds: x.beds, pcm: x.pcm, url: x.url, image: x.image, status: x.status || '', added: x.added, dist: dist, exact: exact, agreed: agreed,
-        kind: dream ? 'dream' : home ? 'ours' : 'none', home: (home || dream) ? { id: (home || dream).id, address: (home || dream).address } : null };
-    }).sort(function (a, b) { return (b.dist == null ? 99 : b.dist) - (a.dist == null ? 99 : a.dist); });
-    const live = list.filter(function (x) { return !x.agreed; }), radius = Number(set.radius) || 1.5, limit = Number(set.limit) || 13;
-    const outside = live.filter(function (x) { return x.dist != null && x.dist > radius; }).length, unknown = live.filter(function (x) { return x.dist == null; }).length;
-    const inside = live.length - outside - unknown, share = outside + inside ? Math.round(outside / (outside + inside) * 100) : 0;
-    // Qualifies only when both tests fail: more than the limit outside AND half or more outside.
-    const qualifies = outside > limit && outside >= inside;
-    const take_off = qualifies ? Math.min(outside - limit, outside - inside + 1) : 0, add_near = qualifies ? outside - inside + 1 : 0;
-    const at = function (mi) { return live.filter(function (x) { return x.dist != null && x.dist > mi; }).length; };
-    return { checked_at: v ? v.at : null, error: v ? v.error : null, office: office, radius: radius, limit: limit, review_from: set.review_from, review_to: set.review_to,
-      total: list.length, live: live.length, agreed: list.length - live.length, outside: outside, inside: inside, unknown: unknown, share: share,
-      qualifies: qualifies, over: take_off, take_off: take_off, add_near: add_near,
-      by_radius: [1, 1.5, 2, 3, 5].map(function (mi) { const o = at(mi), i = live.filter(function (x) { return x.dist != null && x.dist <= mi; }).length; return { miles: mi, outside: o, inside: i, risk: o > limit && o >= i }; }), items: list };
+        kind: sales ? 'sale' : dream ? 'dream' : home ? 'ours' : 'none', home: (home || dream) ? { id: (home || dream).id, address: (home || dream).address } : null };
+    };
+    const byDist = function (a, b) { return (b.dist == null ? 99 : b.dist) - (a.dist == null ? 99 : a.dist); };
+    const list = items.map(function (x) { return shape(x, false); }).sort(byDist), slist = sitems.map(function (x) { return shape(x, true); }).sort(byDist);
+    const radius = Number(set.radius) || 1.5, limit = Number(set.limit) || 13, slimit = Number(set.sales_limit) || 37;
+    const m = rsMeasure(list, radius, limit), sm = rsMeasure(slist, radius, slimit);
+    const hist = (((await p.query("SELECT value FROM app_settings WHERE key = 'rm_stock_hist'")).rows[0] || {}).value || {}).d || {}, today = londonDay();
+    const avg14 = rsAvg(hist, addDaysIso(today, -13), today, 'l'), avg90 = rsAvg(hist, addDaysIso(today, -89), today, 'l');
+    const review = set.review_from && today >= set.review_from ? rsAvg(hist, set.review_from, set.review_to || today, 'l') : null;
+    const avgFails = function (a, lim) { return !!(a && a.outside > lim && a.outside >= a.inside); };
+    // Stale = no successful read of our Rightmove adverts for over a day (a one-off failed check doesn't count).
+    const okAt = v && (v.ok_at || (!v.error && v.at)), stale = !okAt || Date.now() - Date.parse(okAt) > 26 * 3600000;
+    const sAge = vs && vs.at && !vs.error ? Date.now() - Date.parse(vs.at) : Infinity;
+    return Object.assign({ checked_at: v ? v.at : null, ok_at: okAt || null, error: v ? v.error : null, stale: stale, office: office, radius: radius, review_from: set.review_from, review_to: set.review_to,
+      total: list.length, over: m.take_off, items: list,
+      avg14: avg14, avg90: avg90, review: review, avg_risk: avgFails(avg14, limit) || avgFails(avg90, limit) || avgFails(review, limit),
+      sales: Object.assign({ checked_at: vs ? vs.at : null, error: vs ? vs.error : null, stale: !vs || sAge > 30 * 3600000, total: slist.length, items: slist,
+        avg14: rsAvg(hist, addDaysIso(today, -13), today, 's') }, sm),
+      at_risk: m.qualifies || sm.qualifies || avgFails(avg14, limit) || avgFails(avg90, limit) || avgFails(review, limit) }, m);
   }
+  // Sales adverts (judged separately by Rightmove, national average 37): read from Rightmove every 6 hours. The sales
+  // branch number can be set (rm_stock.sales_branch) if it differs from the lettings one.
+  async function rmSalesRefresh(p) {
+    const st = await rmSettings(p), set = await rsSettings(p), branch = set.sales_branch || st.branch; let items = [], error = null;
+    try { items = await rmFetchBranch(branch, null, 'BUY'); } catch (e) { error = /no listings/i.test(e.message) ? null : String(e.message || e).slice(0, 200); }
+    const prev = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_sales'")).rows[0];
+    const val = { at: new Date().toISOString(), items: error && prev && prev.value && prev.value.items ? prev.value.items : items, error: error, branch: branch };
+    await saveList(p, 'rightmove_sales', val, prev);
+    return val;
+  }
+  setTimeout(function () { db().then(function (p) { return p && rmSalesRefresh(p); }).catch(function (e) { console.error('Rightmove sales check:', e.message); }); }, 3 * 60 * 1000).unref();
+  setInterval(function () { db().then(function (p) { return p && rmSalesRefresh(p); }).catch(function (e) { console.error('Rightmove sales check:', e.message); }); }, 6 * 3600 * 1000).unref();
   app.get('/api/admin/rm-stock', withDb(async function (p, req, res) { res.json(Object.assign({ ok: true }, await rmStock(p))); }));
   app.post('/api/admin/rm-stock/settings', withDb(async function (p, req, res) {
     if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
     const b = req.body || {}, v = {};
     if (b.radius != null) { const r = Number(b.radius); if (!(r > 0 && r <= 50)) return res.status(400).json({ ok: false, error: 'radius' }); v.radius = r; }
     if (b.limit != null) { const l = parseInt(b.limit, 10); if (!(l >= 0 && l <= 500)) return res.status(400).json({ ok: false, error: 'limit' }); v.limit = l; }
+    if (b.sales_limit != null && b.sales_limit !== '') { const l = parseInt(b.sales_limit, 10); if (!(l >= 0 && l <= 500)) return res.status(400).json({ ok: false, error: 'limit' }); v.sales_limit = l; }
+    if (b.sales_branch !== undefined) v.sales_branch = /^\d{3,9}$/.test(String(b.sales_branch).trim()) ? String(b.sales_branch).trim() : null;
     ['review_from', 'review_to'].forEach(function (k) { if (b[k] !== undefined) v[k] = /^\d{4}-\d{2}-\d{2}$/.test(String(b[k])) ? String(b[k]) : null; });
     await p.query("INSERT INTO app_settings (key, value) VALUES ('rm_stock', $1) ON CONFLICT (key) DO UPDATE SET value = app_settings.value || $1", [JSON.stringify(v)]);
+    if (b.sales_branch !== undefined) await rmSalesRefresh(p).catch(function () {});
     res.json(Object.assign({ ok: true }, await rmStock(p)));
   }));
-  // Every day (from 9am), whenever too many live adverts are outside the radius, tell the owner's phone — the owner wants
-  // the count kept under the limit all the time, not only around Rightmove's review.
+  // Every day: record the counts (for the averages Rightmove uses), and from 9am tell the owner's phone when at risk,
+  // close to the limit, or when the check itself can't read Rightmove (so it never goes quiet without anyone knowing).
   let rsDay = '';
   setInterval(function () {
     db().then(async function (p) {
       if (!p) return; const day = londonDay(); if (rsDay === day || Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: 'numeric', hour12: false })) < 9) return;
-      const st = await rmStock(p); rsDay = day; if (!st.qualifies) return;
+      const st = await rmStock(p); rsDay = day;
+      if (!st.stale) {
+        const h = (((await p.query("SELECT value FROM app_settings WHERE key = 'rm_stock_hist'")).rows[0] || {}).value || {}).d || {};
+        h[day] = { l: { o: st.outside, i: st.inside }, s: st.sales.stale ? null : { o: st.sales.outside, i: st.sales.inside } };
+        Object.keys(h).sort().slice(0, -120).forEach(function (k) { delete h[k]; });
+        await p.query("INSERT INTO app_settings (key, value) VALUES ('rm_stock_hist', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ d: h })]);
+      }
       const during = st.review_from && st.review_to && day >= st.review_from && day <= st.review_to, soon = st.review_from && day < st.review_from;
-      ntfy({ title: (during ? '⚠ Rightmove stock review is on: ' : '📏 Rightmove: ') + st.outside + ' adverts outside ' + st.radius + ' miles vs ' + st.inside + ' near the office', message: 'To avoid the higher Rightmove bill: take ' + st.take_off + ' far-away adverts off (let, withdrawn, duplicates/Dreams first), or have ' + st.add_near + ' more near the office than now.' + (soon ? ' Next review starts ' + certDay(st.review_from) + '.' : '') + ' See Available properties → Checks → Rightmove stock check.', priority: during ? 4 : 3, tags: ['warning'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#avail' : undefined }).catch(function () {});
+      const tail = (soon ? ' Next review starts ' + certDay(st.review_from) + '.' : '') + ' See Available properties → Checks → Rightmove stock check.', click = PUBLIC_URL ? PUBLIC_URL + '/admin#avail' : undefined;
+      if (st.stale) return ntfy({ title: '⚠ Rightmove stock check can’t read Rightmove', message: 'The check that protects you from the higher Rightmove bill hasn’t been able to read your adverts since ' + (st.ok_at ? certDay(String(st.ok_at).slice(0, 10)) : 'it started') + (st.error ? ' (' + st.error + ')' : '') + '. Count your far-away adverts by hand until it’s fixed.', priority: 4, tags: ['warning'], click: click }).catch(function () {});
+      if (st.qualifies || st.avg_risk) return ntfy({ title: (during ? '⚠ Rightmove review is on — at risk: ' : '📏 Rightmove — at risk: ') + st.outside + ' far vs ' + st.inside + ' near', message: 'To avoid the higher Rightmove bill: take ' + Math.max(st.take_off, 1) + ' far-away adverts off (let, withdrawn, duplicates/Dreams first), or have ' + Math.max(st.add_near, 1) + ' more near the office.' + (st.avg_risk && !st.qualifies ? ' Today is fine, but your average over recent days is still over — keep it down.' : '') + tail, priority: during ? 5 : 4, tags: ['warning'], click: click }).catch(function () {});
+      if (st.sales.qualifies) return ntfy({ title: '📏 Rightmove sales — at risk: ' + st.sales.outside + ' far vs ' + st.sales.inside + ' near', message: 'Sales are judged separately (limit ' + st.sales.limit + '): take ' + st.sales.take_off + ' far-away sales adverts off, or have ' + st.sales.add_near + ' more near the office.' + tail, priority: 4, tags: ['warning'], click: click }).catch(function () {});
+      if (st.close || st.sales.close) ntfy({ title: '📏 Rightmove: close to the limit', message: (st.close ? 'Lettings: ' + st.outside + ' far vs ' + st.inside + ' near (limit ' + st.limit + ').' : 'Sales: ' + st.sales.outside + ' far vs ' + st.sales.inside + ' near (limit ' + st.sales.limit + ').') + ' Two more far-away adverts would put you at risk of the higher bill.' + tail, priority: 3, tags: ['eyes'], click: click }).catch(function () {});
     }).catch(function (e) { console.error('Rightmove stock check:', e.message); });
   }, 30 * 60 * 1000).unref();
   app.get('/api/admin/rightmove', withDb(async function (p, req, res) {
