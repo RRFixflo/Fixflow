@@ -12711,6 +12711,32 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const h = String(src.from || ''), how = !h ? 'Typed in / bookmark' : /google/.test(h) ? 'Google' : /bing/.test(h) ? 'Bing' : /duckduckgo/.test(h) ? 'DuckDuckGo' : /chatgpt|openai/.test(h) ? 'ChatGPT' : /facebook|instagram|fb\./.test(h) ? 'Facebook / Instagram' : /rightmove/.test(h) ? 'Rightmove' : /whatsapp/.test(h) ? 'WhatsApp' : h;
     r.hows[how] = (r.hows[how] || 0) + 1;
   }
+  // Search engines and AI assistants, from where a visit came from (referrer host or ?utm_source=, e.g. ChatGPT adds
+  // utm_source=chatgpt.com to its links). AI first, as Gemini lives on google.com.
+  const SEARCH_AI = [['ai', /chatgpt|openai/, 'ChatGPT'], ['ai', /perplexity/, 'Perplexity'], ['ai', /gemini|bard\./, 'Gemini'], ['ai', /copilot/, 'Microsoft Copilot'],
+    ['ai', /claude\.ai|anthropic/, 'Claude'], ['ai', /(^|\.)meta\.ai|grok|deepseek|mistral|phind|you\.com/, 'Other AI'],
+    ['search', /google/, 'Google'], ['search', /bing/, 'Bing'], ['search', /duckduckgo/, 'DuckDuckGo'], ['search', /yahoo/, 'Yahoo'], ['search', /ecosia/, 'Ecosia'],
+    ['search', /brave|startpage|qwant|yandex|baidu|aol\.|ask\.com/, 'Other search']];
+  function searchAi(ref) { const h = String(ref || '').toLowerCase(); if (!h) return null; for (const x of SEARCH_AI) if (x[1].test(h)) return { group: x[0], name: x[2] }; return null; }
+  // Website visitors → "Leads from search engines & AI": every website lead whose visitor arrived from one (data.src.from),
+  // with the number of real visitors each source sent in the same period.
+  app.get('/api/admin/lead-sources', withDb(async function (p, req, res) {
+    const days = [7, 30, 90, 365].indexOf(parseInt(req.query.days, 10)) !== -1 ? parseInt(req.query.days, 10) : 90, since = new Date(Date.now() - days * 864e5);
+    const rows = (await p.query("SELECT v.id, v.created_at, v.name, v.address, v.data FROM valuation_requests v LEFT JOIN crm_meta m ON m.ref = 'vr:' || v.id WHERE v.created_at >= $1 AND NOT coalesce(m.junk, false) ORDER BY v.id DESC", [since])).rows;
+    const KIND = { viewing: 'Viewing request', rightmove: 'Rightmove', val: 'Rental valuation', valuation: 'Rental valuation', sale: 'Sales valuation', comps: 'Comparables report', mortgage: 'Mortgage rental letter', quick: 'Call-back', cert: 'Certificate booking', clean: 'Cleaning booking', enquiry: 'Message', contact: 'Message', lead: 'Applicant', call: 'Phone message', licence: 'Licence help', diy: 'DIY inventory' };
+    const leads = [], by = {}; let tracked = 0;
+    rows.forEach(function (r) {
+      const d = r.data || {}, src = d.src; if (!src) return; tracked++;
+      const s = searchAi(src.from); if (!s) return;
+      by[s.name] = by[s.name] || { name: s.name, group: s.group, leads: 0, visitors: 0 }; by[s.name].leads++;
+      leads.push({ id: r.id, at: r.created_at, name: r.name || '', address: r.address || '', kind: KIND[d.kind] || (d.kind ? String(d.kind) : 'Enquiry') + (d.what ? ' · ' + d.what : ''), appl: isApplicant(d), source: s.name, group: s.group, landing: src.landing || '', page: src.page || '', from: src.from || '' });
+    });
+    if (opts.visitsBySource) for (const v of await opts.visitsBySource(since).catch(function () { return []; })) {
+      const s = searchAi(v.ref); if (!s) continue;
+      by[s.name] = by[s.name] || { name: s.name, group: s.group, leads: 0, visitors: 0 }; by[s.name].visitors += v.n;
+    }
+    res.json({ ok: true, days: days, since: since, leads: leads, sources: Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return (b.leads - a.leads) || (b.visitors - a.visitors); }), tracked: tracked, total: rows.length });
+  }));
   app.get('/api/admin/sales-funnel', withDb(async function (p, req, res) {
     const days = [7, 30, 90, 365].indexOf(+req.query.days) !== -1 ? +req.query.days : 30;
     const since = new Date(Date.now() - days * 86400000);
