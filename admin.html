@@ -530,6 +530,12 @@
   body:not(.staff-mode) #navAlerts { display: none !important; }
   .sp-sub { display: block; margin: 10px 0 6px; font-size: .92rem; } .sp-vw { margin-bottom: 6px; }
   .oc-amt { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--dk-bd-fedf89, #fedf89); background: var(--dk-bg-fffaeb, #fffaeb); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; } .oc-amt label { font-weight: 600; font-size: .9rem; } .oc-amt-r { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .oc-amt-r .inp { width: 120px; font-size: 16px; }
+  .oc-rej select, .oc-rej textarea { width: 100%; }
+  .oc-chk { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; font-size: .85rem; cursor: pointer; }
+  .oc-chk input { margin-top: 3px; flex: none; }
+  .oc-counter { margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--dk-bg-eef4ff, #EEF4FF); border: 1px solid var(--dk-bd-c7d7fe, #C7D7FE); font-size: .86rem; overflow-wrap: anywhere; }
+  .oc-counter.wait { background: var(--dk-bg-fffaeb, #FFFAEB); border-color: var(--dk-bd-fedf89, #FEDF89); }
+  .oc-counter.old { opacity: .7; }
   .staff-mode #askMode, .staff-mode #askIdeas, .staff-mode #askRem, .staff-mode #askLearn, .staff-mode #askDriveBtn, .staff-mode #askEmailHelp { display: none !important; }
   .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#navAppr):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
@@ -14138,6 +14144,49 @@
     box.addEventListener('click', function(ev){ ev.stopPropagation(); if (ev.target.closest('[data-amt-x]')) box.remove(); else if (ev.target.closest('[data-amt-ok]')) save(); });
     inp.addEventListener('keydown', function(ev){ if (ev.key === 'Enter') { ev.preventDefault(); save(); } });
   }
+  // Counter-offers: invited after a rejection (waiting), and each one the applicant made — with their commitment.
+  function offCounterHtml(o){
+    var d = o.data || {}, cs = Array.isArray(d.counters) ? d.counters : [], ci = d.counter_invite, out = '';
+    var RJ = { low: 'Offer too low', other_app: 'Landlord chose another applicant', terms: 'Terms or move-in date don’t suit' };
+    if (o.status === 'rejected' && d.reject) out += '<div class="oc-cond"><span>Rejected</span>' + esc(RJ[d.reject.reason] || 'Not accepted') + (d.reject.note ? ' — ' + esc(d.reject.note) : '') + ' <small class="muted-note">' + esc(fmtShort(d.reject.at)) + (d.reject.by ? ' · ' + esc(d.reject.by) : '') + '</small></div>';
+    if (o.status === 'rejected' && ci && ci.open) out += '<div class="oc-counter wait">⏳ Invited to make a counter-offer ' + esc(fmtShort(ci.at)) + (ci.hint_pcm ? ' · landlord would consider ' + esc(gbp(ci.hint_pcm)) + ' a month' : '') + ' — no reply yet. The link is on their tracking page.</div>';
+    cs.slice().reverse().forEach(function(c, i){
+      out += '<div class="oc-counter' + (i ? ' old' : '') + '"><b>↩ Counter-offer ' + esc(gbp(c.pcm)) + ' a month</b> (was ' + esc(gbp(c.was_pcm)) + ')' + (c.move_in ? ' · move in ' + esc(longDay(c.move_in)) : '') +
+        '<br><small>✍ ' + esc(c.name) + ' committed to going ahead on these terms if accepted · ' + esc(fmtShort(c.at)) + '</small>' + (c.note ? '<div>“' + esc(c.note) + '”</div>' : '') + '</div>';
+    });
+    return out;
+  }
+  // Rejecting: why, whether to invite a counter-offer (on by default for "too low"), an optional figure the landlord
+  // would consider and a note — and the email telling them (on by default when we have their email).
+  function offRejectBox(btn, o){
+    var row = btn.parentNode, old = row.parentNode.querySelector('.oc-rej'); if (old) { old.remove(); return; }
+    var box = document.createElement('div'); box.className = 'oc-amt oc-rej';
+    box.innerHTML = '<label style="font-weight:700">✕ Reject this offer</label>' +
+      '<label class="lbl" style="margin:6px 0 2px">Why?</label><select class="inp" data-rj-why><option value="low">The offer is too low</option><option value="other_app">The landlord chose another applicant</option><option value="terms">The terms or move-in date don’t suit</option><option value="other">Other (not said in the email)</option></select>' +
+      '<label class="oc-chk"><input type="checkbox" data-rj-counter checked> Invite them to make a counter-offer (they commit to it on their tracking page)</label>' +
+      '<div data-rj-hintrow><label class="lbl" style="margin:4px 0 2px">The landlord would consider (£ a month) <span class="muted-note" style="margin:0">optional — shown to them</span></label><div class="oc-amt-r"><span>£</span><input class="inp" type="text" inputmode="decimal" data-rj-hint placeholder="e.g. 2,000"></div></div>' +
+      '<label class="lbl" style="margin:6px 0 2px">Note to the applicant <span class="muted-note" style="margin:0">optional</span></label><textarea class="inp" rows="2" maxlength="1000" data-rj-note></textarea>' +
+      '<label class="oc-chk"><input type="checkbox" data-rj-email' + (o.lead_email ? ' checked' : ' disabled') + '> ✉ Email ' + esc(String(o.lead_name || 'the applicant').split(/\s+/)[0]) + ' to let them know' + (o.lead_email ? '' : ' (no email address)') + '</label>' +
+      '<div class="oc-amt-r" style="margin-top:8px"><button type="button" class="btn small primary" data-rj-ok>Reject offer</button><button type="button" class="btn small ghost" data-rj-x>Cancel</button></div>';
+    row.parentNode.insertBefore(box, row.nextSibling);
+    var q = function(sel){ return box.querySelector(sel); };
+    var sync = function(){ var low = q('[data-rj-why]').value; q('[data-rj-hintrow]').hidden = !q('[data-rj-counter]').checked; return low; };
+    q('[data-rj-why]').addEventListener('change', function(){ q('[data-rj-counter]').checked = this.value === 'low' || this.value === 'terms'; sync(); });
+    q('[data-rj-counter]').addEventListener('change', sync);
+    box.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      if (ev.target.closest('[data-rj-x]')) { box.remove(); return; }
+      if (!ev.target.closest('[data-rj-ok]')) return;
+      var hint = q('[data-rj-counter]').checked ? q('[data-rj-hint]').value.trim() : '';
+      if (hint && !(parseFloat(hint.replace(/[£,\s]/g, '')) > 0)) { toast('Enter the rent as a number, e.g. 2000'); q('[data-rj-hint]').focus(); return; }
+      var ok = q('[data-rj-ok]'); busy(ok, true, 'Saving…');
+      api('POST', '/api/admin/offers/' + o.id, { status: 'rejected', reject: { reason: q('[data-rj-why]').value, counter: q('[data-rj-counter]').checked, hint_pcm: hint || null, note: q('[data-rj-note]').value.trim(), email: q('[data-rj-email]').checked } }).then(function(d){
+        if (!d || !d.ok) { busy(ok, false); toast(d && d.error === 'amount' ? 'Check the amount' : 'Couldn’t save that'); return; }
+        toast('Offer rejected' + (d.reject_emailed ? ' — ' + String(o.lead_name || 'the applicant').split(/\s+/)[0] + ' has been emailed' + (q('[data-rj-counter]').checked ? ' with the counter-offer link' : '') : d.reject_emailed === false ? ' (email not sent)' : ''));
+        loadOffers();
+      });
+    });
+  }
   function offAskAmount(o){
     var d = o.data || {}, due = Number((d.money || {}).holding) || 0;
     var v = window.prompt('How much arrived in the bank? (holding deposit due: ' + gbp(due) + ')', String(d.paid_amount != null ? d.paid_amount : due));
@@ -14433,6 +14482,7 @@
         (d.refunded_at ? '<span class="oc-pill ok">✓ Refund sent ' + esc(fmtShort(d.refunded_at).split(',')[0]) + '</span> <button type="button" class="linkish" data-off-refunded="0">Undo</button>' : '<button type="button" class="btn small primary" data-off-refunded="1">✓ Refund sent</button>') + '</div>'
         : o.status === 'rejected' && o.paid_at ? '<div class="oc-refund"><div><span>Refund</span>Waiting for the applicant to give their account details.' + ((o.data || {}).refund_asked ? ' <small>Link sent ' + esc(fmtShort(o.data.refund_asked).split(',')[0]) + '</small>' : '') + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button type="button" class="btn small wa-btn" data-off-rfask="wa">' + WA_ICON + 'WhatsApp refund link</button><button type="button" class="btn small" data-off-rfask="email">✉ Email refund link</button></div></div></div>' : '') +
       (o.status === 'withdrawn' && d.withdraw_reason ? '<div class="oc-cond"><span>Why they withdrew</span>' + esc(d.withdraw_reason) + (d.withdraw_more ? ' — ' + esc(d.withdraw_more) : '') + '</div>' : '') +
+      offCounterHtml(o) +
       offCreditHtml(o) +
       offCondsHtml(o) +
       (d.about ? '<div class="oc-cond"><span>About them</span>' + esc(d.about) + '</div>' : '') +
@@ -14582,7 +14632,7 @@
     if (a || pd) {
       var body = a ? { status: a.dataset.offAct } : { paid: pd.dataset.offPaid === '1' };
       if (pd && body.paid) { offAmountBox(pd, o, function(got){ api('POST', '/api/admin/offers/' + o.id, { paid: true, paid_amount: got }).then(function(d){ if (!d.ok) { toast('Couldn’t save that'); loadOffers(); return; } toast('Holding deposit received · ' + gbp(got)); loadOffers(); }); }); return; }
-      if (a && a.dataset.offAct === 'rejected' && !confirm('Reject this offer?')) return;
+      if (a && a.dataset.offAct === 'rejected') { offRejectBox(a, o); return; }
       busy(a || pd, true, '…');
       api('POST', '/api/admin/offers/' + o.id, body).then(function(d){
         if (!d.ok) { busy(a || pd, false); toast('Couldn’t save that'); return; }
