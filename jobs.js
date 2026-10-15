@@ -2890,7 +2890,14 @@ module.exports = function mountJobs(app, opts) {
 
   app.get('/api/admin/jobs', withDb(async function (p, req, res) {
     const r = await p.query('SELECT ' + LIST_COLUMNS + ' FROM jobs ORDER BY created_at DESC LIMIT 5000');
-    res.json({ ok: true, jobs: r.rows.map(function (j) { j.ref = refFor(j.id); return j; }) });
+    // When the job was last sent to a contractor, and when the contractor was last (re)assigned — so the staff app
+    // can remind whoever assigned it to send it (ctrUnsent in admin.html).
+    const sent = {};
+    (await p.query(`SELECT job_id, max(created_at) FILTER (WHERE kind = 'contractor_message') AS s,
+        max(created_at) FILTER (WHERE kind = 'change' AND body LIKE 'Assigned to:%') AS a
+      FROM job_updates WHERE kind IN ('contractor_message', 'change') GROUP BY job_id`).catch(function () { return { rows: [] }; })).rows
+      .forEach(function (x) { sent[x.job_id] = x; });
+    res.json({ ok: true, jobs: r.rows.map(function (j) { j.ref = refFor(j.id); const x = sent[j.id]; j.ctr_sent_at = x ? x.s : null; j.ctr_asg_at = x ? x.a : null; return j; }) });
   }));
 
   // A job that needs no charge to the landlord (warranty, our cost, tenant paid…): out of the missing-charge check.

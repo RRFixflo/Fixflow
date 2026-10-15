@@ -298,6 +298,11 @@
   .bar i.soon { background: var(--warn); }
   .bar i.over { background: var(--brick); }
   .who-chip { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .uc-chip { display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 999px; font-size: .7rem; font-weight: 700; background: var(--dk-bg-fee2e2, #FEE2E2); color: var(--dk-fg-b91c1c, #B91C1C); white-space: nowrap; }
+  .uc-box { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--dk-bd-fca5a5, #FCA5A5); background: var(--dk-bg-fef2f2, #FEF2F2); color: var(--dk-fg-7f1d1d, #7F1D1D); font-size: .88rem; }
+  .uc-box > div:first-child { flex: 1 1 220px; min-width: 0; }
+  .uc-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .uc-acts .btn { margin: 0; }
   .who-chip .nm { font-size: .8rem; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .av { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: .66rem; font-weight: 700; color: #fff; flex-shrink: 0; letter-spacing: .02em; }
   .av.none { background: var(--panel-2); color: var(--ink-faint); box-shadow: inset 0 0 0 1px var(--line-strong); }
@@ -1875,9 +1880,9 @@
     #jobsView .tile { padding: 6px 7px 7px; border-radius: 10px; min-height: 0; }
     #jobsView .tile .k { font-size: .62rem; line-height: 1.2; min-height: 0; }
     #jobsView .tile .v { font-size: 1.05rem; margin-top: 2px; }
-    #todoBox > .addr-warn, #badAddrBanner { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: .8rem; line-height: 1.35; margin-bottom: 8px !important; }
-    #badAddrBanner > span:first-child { flex: 1; min-width: 0; }
-    #badAddrBanner .btn { flex: none; margin: 0; }
+    #todoBox > .addr-warn, #badAddrBanner, #ucBanner { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: .8rem; line-height: 1.35; margin-bottom: 8px !important; }
+    #badAddrBanner > span:first-child, #ucBanner > span:first-child { flex: 1; min-width: 0; }
+    #badAddrBanner .btn, #ucBanner .btn { flex: none; margin: 0; }
     /* Search and sort side by side. */
     #jobsView > .toolbar, #jobsView .toolbar:has(#sort) { display: grid; grid-template-columns: minmax(0,1fr) 112px; gap: 6px; margin-bottom: 10px; }
     #jobsView .toolbar:has(#sort) .tabs { grid-column: 1 / -1; }
@@ -2045,6 +2050,7 @@
       </div>
 
       <div class="addr-warn" id="badAddrBanner" hidden style="margin:0 0 12px"><span id="badAddrText"></span> <button type="button" class="btn small" id="badAddrShow">Show them</button></div>
+      <div class="addr-warn" id="ucBanner" hidden style="margin:0 0 12px"><span id="ucBannerText"></span> <button type="button" class="btn small" id="ucShow">Show them</button></div>
       <div class="filter-chip" id="assignChip" hidden><span id="assignChipText"></span><button type="button" id="assignChipClear" aria-label="Clear filter">✕</button></div>
       <div class="list" id="list"></div>
       </div>
@@ -2601,6 +2607,17 @@
 </div>
 
 <!-- NEW JOB: ASSIGN A CONTRACTOR -->
+<div class="modal" id="ucModal" hidden>
+  <div class="card" style="width:min(520px,100%);display:flex;flex-direction:column;gap:10px">
+    <h3 style="margin:0">📵 Not sent to the contractor yet</h3>
+    <div id="ucBody"></div>
+    <div class="row-actions" style="margin-top:4px;flex-wrap:wrap">
+      <button class="btn ghost" type="button" id="ucLater">Remind me later</button>
+      <button class="btn" type="button" id="ucTold">I’ve told them another way</button>
+      <button class="btn primary" type="button" id="ucSend">💬 Send it now</button>
+    </div>
+  </div>
+</div>
 <div class="modal" id="njModal" hidden>
   <div class="card" style="width:min(520px,100%);display:flex;flex-direction:column;gap:10px">
     <h3 style="margin:0">🛠 New job — who will do it?</h3>
@@ -3675,7 +3692,7 @@
       renderNoteAlerts(); renderChargeBanner();
       renderTcyEndAlerts();
       loadRentRecoveries(); loadRenewalFees(); loadOffers(); loadPvr(); rbTopCount();
-      newJobPrompt();
+      newJobPrompt(); ucPrompt();
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
       return true;
@@ -3730,10 +3747,62 @@
     api('PATCH', '/api/admin/jobs/' + j.id, { assigned_to: who, status: 'Assigned' }).then(function(r){
       busy($('njGo'), false);
       if (!r || !r.ok) { toast('Couldn’t assign — open the job instead'); return; }
-      $('njModal').hidden = true; toast('✓ ' + who + ' assigned to ' + (j.ref || 'the job'));
-      loadJobs().then(function(){ openJob(j.id); });
+      $('njModal').hidden = true; toast('✓ ' + who + ' assigned to ' + (j.ref || 'the job') + ' — now send them the job');
+      loadJobs().then(function(){ openJob(j.id); ucOffer([j.id], who); });
     });
   });
+  // Assigned to a contractor but never sent to them (no WhatsApp / email / copy logged since they were assigned):
+  // the job page, the jobs list and a reminder pop-up ask for it to be sent. Jobs assigned in the last 30 days that
+  // aren't booked yet; the landlord's own jobs are left out.
+  function ctrAsgAt(j){ return new Date(j.ctr_asg_at || j.created_at).getTime(); }
+  function ctrUnsent(j){
+    if (!j || j.archived_at || (j.status && j.status !== 'New' && j.status !== 'Assigned') || j.landlord_handles || !String(j.assigned_to || '').trim()) return false;
+    var at = ctrAsgAt(j); if (!(at > Date.now() - 30 * 864e5)) return false;
+    return !j.ctr_sent_at || new Date(j.ctr_sent_at).getTime() < at - 1000;
+  }
+  function ucJob(id){ return jobs.filter(function(x){ return x.id === id; })[0]; }
+  // Straight after assigning: open the contractor message for those jobs.
+  function ucOffer(ids, who){
+    setTimeout(function(){
+      var list = ids.map(ucJob).filter(Boolean);
+      if (list.length && contractorByName(who)) showContractorMessage(list, who);
+    }, 700);
+  }
+  function ucBox(j){
+    if (!ctrUnsent(j)) return '';
+    var c = contractorByName(j.assigned_to);
+    return '<div class="uc-box" data-pane="overview"><div><b>📵 Not sent to ' + esc(j.assigned_to) + ' yet</b><br><span class="muted-note">Assigned ' + esc(fmtShort(new Date(ctrAsgAt(j)).toISOString())) + ' — they don’t know about this job until it’s sent to them.</span></div>' +
+      '<div class="uc-acts"><button type="button" class="btn small primary" data-uc-send="' + j.id + '">💬 Send it to ' + esc(c ? String(j.assigned_to).split(/\s+/)[0] : 'them') + ' now</button>' +
+      '<button type="button" class="btn small ghost" data-uc-told="' + j.id + '">I’ve told them another way</button></div></div>';
+  }
+  function ucTold(j){
+    if (!j) return Promise.resolve();
+    var how = prompt('How did you let ' + j.assigned_to + ' know about ' + j.ref + '? (e.g. phoned them)', 'Phoned them');
+    if (how === null) return Promise.resolve(false);
+    return logContractorSend([j], 'Told ' + j.assigned_to + ' about the job another way' + (how.trim() ? ' (' + how.trim().slice(0, 200) + ')' : '')).then(function(){ toast('✓ Noted — no more reminders for ' + j.ref); loadJobs(); afterSend(); return true; });
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-uc-send]'); if (b) { var j = ucJob(Number(b.dataset.ucSend)); if (j) showContractorMessage([j], j.assigned_to); return; }
+    b = e.target.closest('[data-uc-told]'); if (b) ucTold(ucJob(Number(b.dataset.ucTold)));
+  });
+  // Later on: a reminder pop-up for a job assigned at least 10 minutes ago and still not sent. "Remind me later" asks again in 2 hours.
+  var ucCur = null;
+  function ucSnoozed(){ try { return JSON.parse(localStorage.getItem('rr_uc_later') || '{}'); } catch (e) { return {}; } }
+  function ucPrompt(){
+    if (Date.now() < njQuiet || staffMode || !$('ucModal') || !$('ucModal').hidden || openJobId || document.querySelector('.modal:not([hidden])')) return;
+    var later = ucSnoozed(), now = Date.now();
+    var list = jobs.filter(function(x){ return ctrUnsent(x) && ctrAsgAt(x) < now - 10 * 6e4 && !(later[x.id] > now); }).sort(function(a, b){ return ctrAsgAt(a) - ctrAsgAt(b); });
+    var j = list[0]; if (!j) return;
+    ucCur = j;
+    $('ucBody').innerHTML = '<div style="font-weight:700">' + esc(j.ref || '') + ' · ' + esc(jobWhat(j, 60)) + '</div>' +
+      '<div class="muted-note" style="margin:2px 0 0">' + esc(j.property_address || '') + ' · ' + esc(j.urgency || 'Routine') + '</div>' +
+      '<p style="margin:8px 0 0">Assigned to <b>' + esc(j.assigned_to) + '</b> ' + esc(fmtShort(new Date(ctrAsgAt(j)).toISOString())) + ', but the job hasn’t been sent to them yet.</p>' +
+      (list.length > 1 ? '<p class="muted-note" style="margin:4px 0 0">' + (list.length - 1) + ' more job' + (list.length === 2 ? '' : 's') + ' not sent yet — see the Jobs page.</p>' : '');
+    $('ucModal').hidden = false;
+  }
+  $('ucLater').addEventListener('click', function(){ if (ucCur) { var l = ucSnoozed(); l[ucCur.id] = Date.now() + 2 * 36e5; try { localStorage.setItem('rr_uc_later', JSON.stringify(l)); } catch (e) {} } $('ucModal').hidden = true; });
+  $('ucSend').addEventListener('click', function(){ var j = ucCur; $('ucModal').hidden = true; njQuiet = Date.now() + 90000; if (j) showContractorMessage([j], j.assigned_to); });
+  $('ucTold').addEventListener('click', function(){ var j = ucCur; $('ucModal').hidden = true; njQuiet = Date.now() + 90000; ucTold(j); });
   // "Assigned to" suggestions: contractors (with their trade) first, then any
   // other names used on jobs before.
   function rebuildAssignees(){
@@ -3772,7 +3841,7 @@
         '<div class="c-status"><span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + (fin ? '✓ ' : '') + esc(j.status) + '</span>' +
           (j.appointment_date && open ? '<span class="appt-chip">📅 ' + esc(apptShort(j)) + '</span>' : '') +
           (j.unread_notes ? '<span class="note-chip">💬 New note</span>' : '') +
-          '<div class="who-chip">' + (j.landlord_handles ? '<span class="av" style="background:#7C3AED">🏠</span><span class="nm">' + esc(whoDoes(j)) + '</span>' : avatar(j.assigned_to) + '<span class="nm">' + (j.assigned_to ? esc(j.assigned_to) + (j.assigned_to_2 ? ' + ' + esc(j.assigned_to_2) : '') : 'Unassigned') + '</span>') + '</div></div>' +
+          '<div class="who-chip">' + (j.landlord_handles ? '<span class="av" style="background:#7C3AED">🏠</span><span class="nm">' + esc(whoDoes(j)) + '</span>' : avatar(j.assigned_to) + '<span class="nm">' + (j.assigned_to ? esc(j.assigned_to) + (j.assigned_to_2 ? ' + ' + esc(j.assigned_to_2) : '') : 'Unassigned') + '</span>') + '</div>' + (ctrUnsent(j) ? '<span class="uc-chip" title="Assigned, but the job hasn’t been sent to them from Fixflow">📵 Not sent yet</span>' : '') + '</div>' +
         '<div class="money ' + (p ? (p.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (p ? gbp(p.value) : '—') +
           '<small>' + (p ? (p.estimated ? 'estimated' : 'profit') : 'no costs') + '</small>' + llCostLine(j) + '</div>' +
       '</button></div>';
@@ -3801,6 +3870,9 @@
     $('assignChip').hidden = !assignFilter || filter === 'archived';
     var badAddr = open.filter(function(j){ return addressProblem(j.property_address); }).length;
     $('badAddrBanner').hidden = !badAddr || assignFilter === 'badAddr';
+    var ucN = open.filter(ctrUnsent).length;
+    $('ucBanner').hidden = !ucN || assignFilter === 'unsent';
+    $('ucBannerText').textContent = '📵 ' + ucN + ' job' + (ucN === 1 ? ' is' : 's are') + ' assigned to a contractor but not sent to them yet.';
     $('badAddrText').textContent = '⚠ ' + badAddr + ' open job' + (badAddr === 1 ? ' has' : 's have') + ' an address without a door number or postcode.';
     $('assignChipText').textContent = (TILE_FILTER_TEXT || {})[assignFilter] || '';
     $('sOpen').textContent = open.length;
@@ -3825,6 +3897,7 @@
         if (assignFilter === 'soon' && soon.indexOf(j) === -1) return false;
         if (assignFilter === 'doneMonth' && doneMonth.indexOf(j) === -1) return false;
         if (assignFilter === 'badAddr' && !addressProblem(j.property_address)) return false;
+        if (assignFilter === 'unsent' && !ctrUnsent(j)) return false;
       }
       if (!q) return true;
       return [j.ref, j.property_address, j.tenant_name, j.tenant_email, j.tenant_phone, issueOf(j), j.location, j.assigned_to, j.assigned_to_2, j.status]
@@ -3895,7 +3968,7 @@
   // Each count tile shows just those jobs; click it again (or the chip) to clear.
   // Open jobs clears any tile filter and shows the open list.
   var TILE_FILTER_TEXT = { unassigned: 'Showing unassigned jobs', assigned: 'Showing assigned jobs', overdue: 'Showing overdue jobs',
-    soon: 'Showing jobs due in the next 24 hours', doneMonth: 'Showing jobs completed this month', badAddr: 'Showing open jobs with an incomplete address' };
+    soon: 'Showing jobs due in the next 24 hours', doneMonth: 'Showing jobs completed this month', badAddr: 'Showing open jobs with an incomplete address', unsent: 'Showing jobs not sent to their contractor yet' };
   function setTab(f){
     filter = f;
     document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on', x.dataset.filter === f); });
@@ -3913,6 +3986,7 @@
   });
   $('assignChipClear').addEventListener('click', function(){ assignFilter = null; render(); });
   $('badAddrShow').addEventListener('click', function(){ assignFilter = 'badAddr'; activeTile = null; setTab('open'); render(); });
+  $('ucShow').addEventListener('click', function(){ assignFilter = 'unsent'; activeTile = null; setTab('open'); render(); });
   // Tap a heading (Job, Property, Raised, Status, contractor, Profit) to sort by it; tap again to reverse.
   $('list').addEventListener('click', function(e){
     var h = e.target.closest('[data-lh]'); if (!h) return;
@@ -4387,7 +4461,9 @@
     });
   }, true);
   function logContractorSend(list, how, text){
-    var refs = list.map(function(j){ return j.ref; }).join(', ');
+    var refs = list.map(function(j){ return j.ref; }).join(', '), nowIso = new Date().toISOString();
+    // Sent: no more "not sent to the contractor yet" reminders for these jobs (the list reload confirms it).
+    list.forEach(function(j){ j.ctr_sent_at = nowIso; jobs.forEach(function(x){ if (x.id === j.id) x.ctr_sent_at = nowIso; }); });
     return Promise.all(list.map(function(j){
       return api('POST', '/api/admin/jobs/' + j.id + '/updates', {
         kind: 'contractor_message',
@@ -4512,9 +4588,10 @@
       return api('PATCH', '/api/admin/jobs/' + j.id, body);
     })).then(function(results){
       var ok = results.filter(function(r){ return r.ok; }).length;
-      toast('Assigned ' + ok + ' job' + (ok === 1 ? '' : 's') + ' to ' + who);
+      toast('Assigned ' + ok + ' job' + (ok === 1 ? '' : 's') + ' to ' + who + ' — now send them the job' + (ok === 1 ? '' : 's'));
       $('bulkAssign').value = '';
-      loadJobs();
+      var ids = list.filter(function(j, i){ return results[i] && results[i].ok; }).map(function(j){ return j.id; });
+      loadJobs().then(function(){ ucOffer(ids, who); });
     });
   });
   $('bulkClear').addEventListener('click', function(){ selected.clear(); render(); });
@@ -8190,6 +8267,7 @@
 
       // A certificate renewal raised automatically: not a reported problem — ask the landlord who does it.
       renewalBox(j) +
+      ucBox(j) +
       // At a glance
       '<div class="glance" data-pane="overview">' +
         '<div><div class="k">' + (completed ? 'Completed' : 'Raised') + '</div><div class="v"><span class="time ' + t.cls + '">' + esc(completed ? t.text : t.text.replace(/^Raised t/, 'T').replace(/^Raised /, '')) + '</span>' +
@@ -9059,7 +9137,9 @@
         $('saveBtn').disabled = false;
         if (!d.ok) { toast('Couldn’t save: ' + (d.error || 'error')); return; }
         toast('Saved');
-        if (body.assigned_to && body.assigned_to.trim()) noticeTenantAfterAssign(j.id, body.assigned_to.trim());
+        // A contractor assigned: send them the job now (sending it then offers the tenant message); someone with no
+        // contractor record can't be messaged from here, so go straight to the tenant message as before.
+        if (body.assigned_to && body.assigned_to.trim()) { if (contractorByName(body.assigned_to.trim())) { var asgName = body.assigned_to.trim(); loadJobs().then(function(){ ucOffer([j.id], asgName); }); } else noticeTenantAfterAssign(j.id, body.assigned_to.trim()); }
         else if ((body.assigned_to_2 && body.assigned_to_2.trim()) || ('task_2' in body && body.task_2 && j.assigned_to_2)) offerSendSecond(j.id, (body.assigned_to_2 || j.assigned_to_2).trim(), 'task_2' in body ? body.task_2 : j.task_2);
         openJob(j.id);
         loadJobs();
