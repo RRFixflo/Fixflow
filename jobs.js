@@ -14960,10 +14960,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
         avg14: rsAvg(hist, addDaysIso(today, -13), today, 's') }, sm),
       at_risk: m.qualifies || sm.qualifies || avgFails(avg14, limit) || avgFails(avg90, limit) || avgFails(review, limit) }, m);
   }
-  // Sales adverts (judged separately by Rightmove, national average 37): read from Rightmove every 6 hours. The sales
-  // branch number can be set (rm_stock.sales_branch) if it differs from the lettings one.
+  // Sales adverts (judged separately by Rightmove, national average 37): off — the office has no sales on Rightmove (the
+  // owner said). Read every 6 hours only once a sales branch number is set (rm_stock.sales_branch).
   async function rmSalesRefresh(p) {
-    const st = await rmSettings(p), set = await rsSettings(p), branch = set.sales_branch || st.branch; let items = [], error = null;
+    const set = await rsSettings(p), branch = set.sales_branch; let items = [], error = null;
+    if (!branch) return null;
     try { items = await rmFetchBranch(branch, null, 'BUY'); } catch (e) { error = /no listings/i.test(e.message) ? null : String(e.message || e).slice(0, 200); }
     const prev = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_sales'")).rows[0];
     const val = { at: new Date().toISOString(), items: error && prev && prev.value && prev.value.items ? prev.value.items : items, error: error, branch: branch };
@@ -15002,8 +15003,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const tail = (soon ? ' Next review starts ' + certDay(st.review_from) + '.' : '') + ' See Available properties → Checks → Rightmove stock check.', click = PUBLIC_URL ? PUBLIC_URL + '/admin#avail' : undefined;
       if (st.stale) return ntfy({ title: '⚠ Rightmove stock check can’t read Rightmove', message: 'The check that protects you from the higher Rightmove bill hasn’t been able to read your adverts since ' + (st.ok_at ? certDay(String(st.ok_at).slice(0, 10)) : 'it started') + (st.error ? ' (' + st.error + ')' : '') + '. Count your far-away adverts by hand until it’s fixed.', priority: 4, tags: ['warning'], click: click }).catch(function () {});
       if (st.qualifies || st.avg_risk) return ntfy({ title: (during ? '⚠ Rightmove review is on — at risk: ' : '📏 Rightmove — at risk: ') + st.outside + ' far vs ' + st.inside + ' near', message: 'To avoid the higher Rightmove bill: take ' + Math.max(st.take_off, 1) + ' far-away adverts off (let, withdrawn, duplicates/Dreams first), or have ' + Math.max(st.add_near, 1) + ' more near the office.' + (st.avg_risk && !st.qualifies ? ' Today is fine, but your average over recent days is still over — keep it down.' : '') + tail, priority: during ? 5 : 4, tags: ['warning'], click: click }).catch(function () {});
-      if (st.sales.qualifies) return ntfy({ title: '📏 Rightmove sales — at risk: ' + st.sales.outside + ' far vs ' + st.sales.inside + ' near', message: 'Sales are judged separately (limit ' + st.sales.limit + '): take ' + st.sales.take_off + ' far-away sales adverts off, or have ' + st.sales.add_near + ' more near the office.' + tail, priority: 4, tags: ['warning'], click: click }).catch(function () {});
-      if (st.close || st.sales.close) ntfy({ title: '📏 Rightmove: close to the limit', message: (st.close ? 'Lettings: ' + st.outside + ' far vs ' + st.inside + ' near (limit ' + st.limit + ').' : 'Sales: ' + st.sales.outside + ' far vs ' + st.sales.inside + ' near (limit ' + st.sales.limit + ').') + ' Two more far-away adverts would put you at risk of the higher bill.' + tail, priority: 3, tags: ['eyes'], click: click }).catch(function () {});
+      if (st.sales.total && st.sales.qualifies) return ntfy({ title: '📏 Rightmove sales — at risk: ' + st.sales.outside + ' far vs ' + st.sales.inside + ' near', message: 'Sales are judged separately (limit ' + st.sales.limit + '): take ' + st.sales.take_off + ' far-away sales adverts off, or have ' + st.sales.add_near + ' more near the office.' + tail, priority: 4, tags: ['warning'], click: click }).catch(function () {});
+      if (st.close || (st.sales.total && st.sales.close)) ntfy({ title: '📏 Rightmove: close to the limit', message: (st.close ? 'Lettings: ' + st.outside + ' far vs ' + st.inside + ' near (limit ' + st.limit + ').' : 'Sales: ' + st.sales.outside + ' far vs ' + st.sales.inside + ' near (limit ' + st.sales.limit + ').') + ' Two more far-away adverts would put you at risk of the higher bill.' + tail, priority: 3, tags: ['eyes'], click: click }).catch(function () {});
     }).catch(function (e) { console.error('Rightmove stock check:', e.message); });
   }, 30 * 60 * 1000).unref();
   app.get('/api/admin/rightmove', withDb(async function (p, req, res) {
