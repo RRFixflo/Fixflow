@@ -14414,7 +14414,7 @@
     }
     if (e.target.closest('[data-off-addr]')) { offAddrEdit(o); return; }
     var rfb = e.target.closest('[data-off-refunded]');
-    if (rfb) { api('POST', '/api/admin/offers/' + o.id, { refunded: rfb.dataset.offRefunded === '1' }).then(function(d2){ if (!d2.ok) { toast('Couldn’t save that'); return; } toast(rfb.dataset.offRefunded === '1' ? 'Refund marked as sent' : 'Undone'); loadOffers(); }); return; }
+    if (rfb) { api('POST', '/api/admin/offers/' + o.id, { refunded: rfb.dataset.offRefunded === '1' }).then(function(d2){ if (!d2.ok) { toast('Couldn’t save that'); return; } toast(rfb.dataset.offRefunded === '1' ? 'Refund marked as sent' + (d2.refund_emailed ? ' — the applicant has been emailed to confirm' : d2.refund_emailed === false ? ' (no email address, so no confirmation sent)' : '') : 'Undone'); loadOffers(); }); return; }
     if (e.target.closest('[data-off-accmail]')) { offSendMail(offConfirmMail(o)); api('POST', '/api/admin/offers/' + o.id, { note: 'Offer confirmation email prepared for the applicants' }); return; }
     var tb = e.target.closest('[data-off-tenants]');
     if (tb) {
@@ -16265,7 +16265,7 @@
     if (hit('[data-pv-offerlink]')) { window.open(pvWa(t) + encodeURIComponent('Hi ' + pvFirst(t) + ', great news that you’d like to go ahead with ' + shortAddr(t.property_address) + '! Please fill in the offer form here — your reservation becomes your holding deposit: ' + (pvOrigin || meta.offerOrigin || location.origin) + '/offer?pvr=' + t.token + ' — Residential Realtors'), '_blank', 'noopener'); pvPost(t, { note: 'Offer form link sent by WhatsApp' }); return; }
     var pd = hit('[data-pv-paid]');
     if (pd) { if (pd.dataset.pvPaid === '1') { var amt = prompt('Amount received (£)', Number(t.amount).toFixed(2)); if (amt === null) return; pvPost(t, { paid: true, paid_amount: amt }, '✓ Marked paid'); } else if (confirm('Mark the reservation as not paid?')) pvPost(t, { paid: false }); return; }
-    var rf = hit('[data-pv-refunded]'); if (rf) { pvPost(t, { refunded: rf.dataset.pvRefunded === '1' }, rf.dataset.pvRefunded === '1' ? '✓ Refund marked as sent' : ''); return; }
+    var rf = hit('[data-pv-refunded]'); if (rf) { pvPost(t, { refunded: rf.dataset.pvRefunded === '1' }, rf.dataset.pvRefunded === '1' ? '✓ Refund marked as sent — the applicant is emailed to confirm' : ''); return; }
     var dc = hit('[data-pv-dec]');
     if (dc) { var v = dc.dataset.pvDec; if (!confirm(v === 'clear' ? 'Reopen their answer? They’ll be able to choose again on their link.' : v === 'yes' ? 'Record that they’re going ahead?' : 'Record that they’re not going ahead?')) return; pvPost(t, { decision: v }, '✓ Saved'); return; }
     if (hit('[data-pv-view]')) {
@@ -17930,7 +17930,7 @@
     if (e.target.closest('[data-rb-fees]')) { rbFeesPopup(); return; }
     var rf = e.target.closest('[data-rb-refunded]');
     if (rf) { if (!confirm('Holding deposit refunded to the applicant?')) return; busy(rf, true, 'Saving…');
-      api('POST', '/api/admin/offers/' + rf.dataset.rbRefunded, { refunded: true }).then(function(d2){ busy(rf, false); if (!d2 || !d2.ok) { toast('Couldn’t save that'); return; } toast('✓ Refund marked as sent'); loadRentBoard(true); if (typeof loadOffers === 'function') loadOffers(); }); return; }
+      api('POST', '/api/admin/offers/' + rf.dataset.rbRefunded, { refunded: true }).then(function(d2){ busy(rf, false); if (!d2 || !d2.ok) { toast('Couldn’t save that'); return; } toast('✓ Refund marked as sent' + (d2.refund_emailed ? ' — the applicant has been emailed to confirm' : '')); loadRentBoard(true); if (typeof loadOffers === 'function') loadOffers(); }); return; }
     var of = e.target.closest('[data-rb-offer]');
     if (of) { var oid = Number(of.dataset.rbOffer); offTab = 'all'; offFocus = oid; showView('offers'); setTimeout(function(){ var c = document.querySelector('#offList [data-off="' + oid + '"]'); if (c) { c.querySelectorAll('details').forEach(function(dd, i){ if (!i) dd.open = true; }); c.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }, 350); return; }
     var lk = e.target.closest('[data-rb-ll]'); if (lk) { openLandlord(Number(lk.dataset.rbLl)); return; }
