@@ -14881,12 +14881,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const out = {}; (await p.query("SELECT rm_id, first_seen, review_at::text AS review_at, extended, takedown_at, by_name, change_note, changed_at FROM rm_dreams")).rows.forEach(function (r) { out[r.rm_id] = r; }); return out;
   }
   // Rightmove stock check (Available properties → checks): Rightmove charges a branch as a "Geographical Advertiser" (a
-  // second, virtual branch — more than double the bill) when more of its available lettings adverts sit outside the
-  // radius around the branch than the national average (13 in October 2026), measured over a 14-day review window.
+  // second, virtual branch — more than double the bill) when, on average over its review, BOTH 50% or more of its available
+  // lettings adverts are outside the radius around the branch (the nearest 100,000 homes — about 1.5 miles here; ask
+  // Rightmove) AND that is more than the national average (13 lettings in 2026). Breaking either test is enough
+  // (Rightmove's Geographical Advertising Guidelines, effective 1 October 2025).
   // Each live advert's distance from the office (its map position, else its postcode area's centre), whether it is a
   // Dream (an extra advert for a home already advertised) or matches nothing on our available list, and the count
   // outside the radius. Radius, limit and review dates are set by managers (app_settings rm_stock).
-  const RS_DEFAULT = { radius: 3, limit: 13, review_from: '2026-11-17', review_to: '2026-11-30' };
+  const RS_DEFAULT = { radius: 1.5, limit: 13, review_from: '2026-11-17', review_to: '2026-11-30' };
   async function rsSettings(p) { const r = (await p.query("SELECT value FROM app_settings WHERE key = 'rm_stock'")).rows[0]; return Object.assign({}, RS_DEFAULT, (r && r.value) || {}); }
   const rsMiles = function (a, b, c, d) { const R = 3958.8, r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2); return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * r) * Math.cos(c * r) * y * y)); };
   async function rsGeo(p, set) {
@@ -14917,12 +14919,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return { id: x.id, address: x.address, beds: x.beds, pcm: x.pcm, url: x.url, image: x.image, status: x.status || '', added: x.added, dist: dist, exact: exact, agreed: agreed,
         kind: dream ? 'dream' : home ? 'ours' : 'none', home: (home || dream) ? { id: (home || dream).id, address: (home || dream).address } : null };
     }).sort(function (a, b) { return (b.dist == null ? 99 : b.dist) - (a.dist == null ? 99 : a.dist); });
-    const live = list.filter(function (x) { return !x.agreed; }), radius = Number(set.radius) || 3, limit = Number(set.limit) || 13;
+    const live = list.filter(function (x) { return !x.agreed; }), radius = Number(set.radius) || 1.5, limit = Number(set.limit) || 13;
     const outside = live.filter(function (x) { return x.dist != null && x.dist > radius; }).length, unknown = live.filter(function (x) { return x.dist == null; }).length;
+    const inside = live.length - outside - unknown, share = outside + inside ? Math.round(outside / (outside + inside) * 100) : 0;
+    // Qualifies only when both tests fail: more than the limit outside AND half or more outside.
+    const qualifies = outside > limit && outside >= inside;
+    const take_off = qualifies ? Math.min(outside - limit, outside - inside + 1) : 0, add_near = qualifies ? outside - inside + 1 : 0;
     const at = function (mi) { return live.filter(function (x) { return x.dist != null && x.dist > mi; }).length; };
     return { checked_at: v ? v.at : null, error: v ? v.error : null, office: office, radius: radius, limit: limit, review_from: set.review_from, review_to: set.review_to,
-      total: list.length, live: live.length, agreed: list.length - live.length, outside: outside, inside: live.length - outside - unknown, unknown: unknown,
-      over: Math.max(0, outside - limit), by_radius: [1, 2, 3, 5, 10].map(function (mi) { return { miles: mi, outside: at(mi) }; }), items: list };
+      total: list.length, live: live.length, agreed: list.length - live.length, outside: outside, inside: inside, unknown: unknown, share: share,
+      qualifies: qualifies, over: take_off, take_off: take_off, add_near: add_near,
+      by_radius: [1, 1.5, 2, 3, 5].map(function (mi) { const o = at(mi), i = live.filter(function (x) { return x.dist != null && x.dist <= mi; }).length; return { miles: mi, outside: o, inside: i, risk: o > limit && o >= i }; }), items: list };
   }
   app.get('/api/admin/rm-stock', withDb(async function (p, req, res) { res.json(Object.assign({ ok: true }, await rmStock(p))); }));
   app.post('/api/admin/rm-stock/settings', withDb(async function (p, req, res) {
@@ -14940,9 +14947,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setInterval(function () {
     db().then(async function (p) {
       if (!p) return; const day = londonDay(); if (rsDay === day || Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: 'numeric', hour12: false })) < 9) return;
-      const st = await rmStock(p); rsDay = day; if (!st.over) return;
+      const st = await rmStock(p); rsDay = day; if (!st.qualifies) return;
       const during = st.review_from && st.review_to && day >= st.review_from && day <= st.review_to, soon = st.review_from && day < st.review_from;
-      ntfy({ title: (during ? '⚠ Rightmove stock review is on: ' : '📏 Rightmove: ') + st.outside + ' adverts outside ' + st.radius + ' miles (limit ' + st.limit + ')', message: 'Take ' + st.over + ' off (let, withdrawn, duplicates/Dreams first) to avoid the higher Rightmove bill.' + (soon ? ' Next review starts ' + certDay(st.review_from) + '.' : '') + ' See Available properties → Checks → Rightmove stock check.', priority: during ? 4 : 3, tags: ['warning'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#avail' : undefined }).catch(function () {});
+      ntfy({ title: (during ? '⚠ Rightmove stock review is on: ' : '📏 Rightmove: ') + st.outside + ' adverts outside ' + st.radius + ' miles vs ' + st.inside + ' near the office', message: 'To avoid the higher Rightmove bill: take ' + st.take_off + ' far-away adverts off (let, withdrawn, duplicates/Dreams first), or have ' + st.add_near + ' more near the office than now.' + (soon ? ' Next review starts ' + certDay(st.review_from) + '.' : '') + ' See Available properties → Checks → Rightmove stock check.', priority: during ? 4 : 3, tags: ['warning'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#avail' : undefined }).catch(function () {});
     }).catch(function (e) { console.error('Rightmove stock check:', e.message); });
   }, 30 * 60 * 1000).unref();
   app.get('/api/admin/rightmove', withDb(async function (p, req, res) {
