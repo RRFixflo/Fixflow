@@ -10919,7 +10919,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let carry = 0;
     for (let i = 0; i < 60; i++) {
       const from = addMonthsIso(start, i);
-      if (from > today || (nextStart && from >= nextStart)) break;
+      // A rent not due yet still gets its statement once it's been received or paid out early (tenant paid ahead).
+      if ((from > today && !((d.rent_rcvd || {})[from] || (d.ll_paid || {})[from])) || (nextStart && from >= nextStart)) break;
       // Paid off by the landlord (marked paid, or the move-in invoice paid) before this rent: nothing brought forward.
       if (i > 0 && settled && settled < from) carry = 0;
       const ownCosts = (d.month_costs || []).some(function (c) { return c && c.from === from; });
