@@ -14934,16 +14934,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query("INSERT INTO app_settings (key, value) VALUES ('rm_stock', $1) ON CONFLICT (key) DO UPDATE SET value = app_settings.value || $1", [JSON.stringify(v)]);
     res.json(Object.assign({ ok: true }, await rmStock(p)));
   }));
-  // From 7 days before Rightmove's review until its last day: once a day (from 9am), tell the owner's phone when too many
-  // live adverts are outside the radius.
+  // Every day (from 9am), whenever too many live adverts are outside the radius, tell the owner's phone — the owner wants
+  // the count kept under the limit all the time, not only around Rightmove's review.
   let rsDay = '';
   setInterval(function () {
     db().then(async function (p) {
       if (!p) return; const day = londonDay(); if (rsDay === day || Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: 'numeric', hour12: false })) < 9) return;
-      const st = await rmStock(p); if (!st.review_from || !st.review_to || day < addDaysIso(st.review_from, -7) || day > st.review_to) return;
-      rsDay = day; if (!st.over) return;
-      const during = day >= st.review_from;
-      ntfy({ title: (during ? '⚠ Rightmove stock review is on: ' : '⏰ Rightmove stock review starts ' + certDay(st.review_from) + ': ') + st.outside + ' adverts outside ' + st.radius + ' miles', message: 'The limit is ' + st.limit + ' — take ' + st.over + ' off (let, withdrawn, duplicates/Dreams first) to avoid the higher Rightmove bill. See Available properties → Checks → Rightmove stock check.', priority: during ? 4 : 3, tags: ['warning'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#avail' : undefined }).catch(function () {});
+      const st = await rmStock(p); rsDay = day; if (!st.over) return;
+      const during = st.review_from && st.review_to && day >= st.review_from && day <= st.review_to, soon = st.review_from && day < st.review_from;
+      ntfy({ title: (during ? '⚠ Rightmove stock review is on: ' : '📏 Rightmove: ') + st.outside + ' adverts outside ' + st.radius + ' miles (limit ' + st.limit + ')', message: 'Take ' + st.over + ' off (let, withdrawn, duplicates/Dreams first) to avoid the higher Rightmove bill.' + (soon ? ' Next review starts ' + certDay(st.review_from) + '.' : '') + ' See Available properties → Checks → Rightmove stock check.', priority: during ? 4 : 3, tags: ['warning'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#avail' : undefined }).catch(function () {});
     }).catch(function (e) { console.error('Rightmove stock check:', e.message); });
   }, 30 * 60 * 1000).unref();
   app.get('/api/admin/rightmove', withDb(async function (p, req, res) {
