@@ -10939,6 +10939,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       // Checked against the money itself before it can go to a landlord (stmtCheck): a statement that disagrees with
       // what came in or was paid out is flagged and can't be sent until it's put right.
       out[out.length - 1].check = stmtCheck(d, from, rent, f.fees, balance);
+      const rc0 = (d.rent_rcvd || {})[from];
+      if (rc0 && rc0.amount != null && Number(rc0.amount) > 0 && Math.abs(Number(rc0.amount) - rent) > 0.01) out[out.length - 1].fix_rent = { was: Number(rc0.amount), rent: rent };
       carry = balance < -0.004 ? -balance : 0;
     }
     return out;
@@ -11267,6 +11269,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const dueAmt = Number(b.due) || Number(d.rent_pcm) || 0, parts = ((d.rent_parts || {})[from] || []).slice();
     const pd = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) && b.date <= londonDay() ? b.date : londonDay();
     if (b.part || parts.length) {
+      // “Rent in full” (Pay landlord now, mark several collected, an amount typed over what's left) after part payments:
+      // only the rest counts — the full rent on top of the parts made the rent received too much (£2,090 + £4,020).
+      const before = Math.round(parts.reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0) * 100) / 100;
+      if (!b.part && dueAmt > 0 && amount > 0 && before + amount > dueAmt + 0.004) amount = Math.max(0, Math.round((dueAmt - before) * 100) / 100);
       if (amount > 0) parts.push({ amount: amount, date: pd, who: str(b.who, 120) || null, at: new Date().toISOString(), by: who });
       const got = Math.round(parts.reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0) * 100) / 100;
       await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_parts}', coalesce(data->'rent_parts', '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
@@ -11772,6 +11778,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
     Object.keys(pend).forEach(function (k) { pend[k].forEach(function (g) { g.invoices.forEach(function (i) { ids[i.id] = 1; }); }); });
     out.items.forEach(function (x) { x.months.forEach(function (m) { (m.fees || []).forEach(function (f) { if (f.invoice_id) ids[f.invoice_id] = 1; }); }); });
     res.json(Object.assign({ ok: true, pending: pend, inv_info: await invoiceInfo(p, Object.keys(ids).map(Number)) }, out));
+  }));
+  // Correct the amount recorded as received for one rent (e.g. £6,110 typed for a £4,020 rent). Managers only;
+  // noted in the tenancy's History with the old and new amounts.
+  app.post('/api/admin/tenancies/:id/rent-received-amount', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const b = req.body || {}, id = jobId(req), from = isoDay(b.from), amount = money(b.amount);
+    if (!from || !(amount > 0)) return res.status(400).json({ ok: false, error: 'amount' });
+    const t = (await p.query('SELECT data FROM tenancies WHERE id = $1', [id])).rows[0];
+    const rc = t && ((t.data || {}).rent_rcvd || {})[from];
+    if (!rc) return res.status(404).json({ ok: false, error: 'not-received' });
+    // Part payments recorded for that rent are trimmed to match (the last one gives way), so nothing adds them up again.
+    const parts = (((t.data || {}).rent_parts || {})[from] || []).slice();
+    if (parts.length) { const others = parts.slice(0, -1).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0); const last = Math.round((amount - others) * 100) / 100; if (last > 0) parts[parts.length - 1] = Object.assign({}, parts[parts.length - 1], { amount: last, was: parts[parts.length - 1].amount }); }
+    await p.query(`UPDATE tenancies SET data = jsonb_set(CASE WHEN $5::jsonb IS NULL THEN data ELSE jsonb_set(data, ARRAY['rent_parts', $2::text], $5::jsonb) END, ARRAY['rent_rcvd', $2::text, 'amount'], to_jsonb($3::numeric)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
+      [id, from, amount, JSON.stringify([{ at: new Date().toISOString(), text: 'Rent received for ' + certDay(from) + ' corrected from ' + gbp(Number(rc.amount) || 0) + ' to ' + gbp(amount) + ' (' + (req.user ? req.user.name : 'Office') + ')' }]), parts.length ? JSON.stringify(parts) : null]);
+    res.json({ ok: true });
   }));
   // A month's statement sent to the landlord (or not).
   app.post('/api/admin/tenancies/:id/statement', withDb(async function (p, req, res) {
