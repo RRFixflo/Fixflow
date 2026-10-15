@@ -1012,8 +1012,8 @@
     var loadTrack = function(){
     fetch('/api/offers/track/' + tm[1], { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
       // Unchanged (or they're in the middle of withdrawing): leave the page as it is.
-      var key = JSON.stringify([d.status, d.paid_at, d.decided_at, d.paid_claim, d.refund, d.refunded_at, d.id_needs, d.can_add_id]);
-      if (key === lastSeen || ($('wdBox') && !$('wdBox').hidden)) return;
+      var key = JSON.stringify([d.status, d.paid_at, d.decided_at, d.paid_claim, d.refund, d.refunded_at, d.id_needs, d.can_add_id, d.counter_invite, d.counter]);
+      if (key === lastSeen || ($('wdBox') && !$('wdBox').hidden) || ($('ctCard') && $('ctCard').contains(document.activeElement))) return;
       lastSeen = key;
       if (!d.ok) { forgetOffer(location.pathname); $('trackView').innerHTML = '<div class="card"><h2>Offer not found</h2><p class="lead" style="margin:0">This link isn’t valid. Please check it, or contact Residential Realtors.</p></div>'; return; }
       var m = d.money || {}, acc = d.status === 'accepted', rej = d.status === 'rejected', wd = d.status === 'withdrawn', paid = !!d.paid_at;
@@ -1021,7 +1021,7 @@
         ['ok', 'Offer received', longDay(d.created_at) + ' · ' + gbp(d.offer_pw) + ' a week (' + gbp(m.pcm || 0) + ' a month)' + (d.move_in ? ' · move in ' + longDay(d.move_in) : '')],
         [paid ? (d.short > 0 ? 'now' : 'ok') : rej ? '' : 'now', paid ? (d.short > 0 ? 'Holding deposit part paid' : 'Holding deposit received') : 'Holding deposit', paid ? longDay(d.paid_at) + ' · ' + gbp(d.paid_amount != null ? d.paid_amount : (m.holding || 0)) + (d.short > 0 ? ' received · ' + gbp(d.short) + ' still to pay' : '') : rej ? 'Not needed' : 'Please pay ' + gbp(m.holding || 0) + ' to reserve the property — details below'],
         wd ? ['no', 'You withdrew your offer', longDay(d.decided_at) + ' · as per the terms, the holding deposit is not refunded']
-          : [acc ? 'ok' : rej ? 'no' : (paid ? 'now' : ''), acc ? 'Offer accepted 🎉' : rej ? 'Offer not accepted' : 'Landlord’s decision', acc ? longDay(d.decided_at) : rej ? longDay(d.decided_at) + (paid ? ' · we’ll email you to ask where to send your holding deposit refund' : '') : 'We’ll update this page as soon as the landlord decides'],
+          : [acc ? 'ok' : rej ? 'no' : (paid ? 'now' : ''), acc ? 'Offer accepted 🎉' : rej ? 'Offer not accepted' : 'Landlord’s decision', acc ? longDay(d.decided_at) : rej ? longDay(d.decided_at) + (d.counter_invite ? ' · you can make a counter-offer below' : paid ? ' · we’ll email you to ask where to send your holding deposit refund' : '') : d.counter ? 'Your counter-offer of ' + gbp(d.counter.pcm) + ' a month went to the landlord on ' + longDay(d.counter.at) + ' — we’ll update this page as soon as they decide' : 'We’ll update this page as soon as the landlord decides'],
         [acc ? 'now' : '', 'References and tenancy agreement', acc ? 'We’ll send the referencing forms — please complete them within 24 hours. Then the tenancy agreement to sign and the rest of the move-in money (' + gbp(m.balance || 0) + ').' : wd || rej ? 'Not going ahead' : 'Once the offer is accepted']
       ];
       var canClaim = d.bank && !paid && !d.paid_claim;
@@ -1036,6 +1036,16 @@
           (d.paid_claim ? '<div class="note-warn" style="background:var(--ok-t);color:#0d6b37"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Thanks — you told us you paid on ' + esc(longDay(d.paid_claim.date)) + '. We’ll confirm here once it arrives in our account.</span></div>'
             : '') : '') +
         '<div class="btnrow" style="margin-top:10px"><a class="btn' + (paid ? '' : ' dark') + '" target="_blank" rel="noopener" href="/api/offers/track/' + tm[1] + '/offer.pdf">⬇ Signed agreement (PDF)</a>' + (paid ? '<a class="btn dark" target="_blank" rel="noopener" href="/api/offers/track/' + tm[1] + '/receipt.pdf">⬇ Download receipt</a>' : '') + '</div></div>' +
+        // Not accepted, invited to counter: a new rent (or move-in / terms), a commitment to go ahead if accepted, and their name.
+        (rej && d.counter_invite ? '<div class="card" id="ctCard"><h2>Make a counter-offer</h2><p class="lead">Your offer was ' + gbp(m.pcm || 0) + ' a month.' + (d.counter_invite.hint_pcm ? ' The landlord would consider <b>' + gbp(d.counter_invite.hint_pcm) + ' a month</b>.' : '') + ' Before the property is offered to anyone else, you can make a new offer.</p>' +
+          '<div class="g2"><div class="f"><label class="l" for="ctAmt">Your new offer (£)</label><input id="ctAmt" inputmode="decimal" placeholder="' + esc(String(d.counter_invite.hint_pcm || Math.ceil((m.pcm || 0) / 50) * 50 + 50)) + '"></div>' +
+          '<div class="f"><label class="l" for="ctPer">Per</label><select id="ctPer"><option value="pcm">month</option><option value="pw">week</option></select></div></div>' +
+          '<div class="f"><label class="l" for="ctMove">Move-in date <span class="opt">optional — change it if that helps</span></label><input id="ctMove" type="date" value="' + esc(d.move_in || '') + '"></div>' +
+          '<div class="f"><label class="l" for="ctNote">Anything else you can offer <span class="opt">optional, e.g. a longer tenancy</span></label><textarea id="ctNote" rows="2" maxlength="1000"></textarea></div>' +
+          '<label class="check f"><input type="checkbox" id="ctOk"><span>I commit to this counter-offer. If the landlord accepts it, I will go ahead and rent the property on these terms, and the holding deposit terms I agreed to with my offer apply to it.</span></label>' +
+          '<div class="f"><label class="l" for="ctName">Type your full name to confirm</label><input id="ctName" autocomplete="name"></div>' +
+          '<button type="button" class="btn dark" id="ctGo">Send my counter-offer</button><div class="err" id="ctErr" hidden></div>' +
+          (paid ? '<p class="hint" style="margin:12px 0 0">Rather not? Your holding deposit will be refunded in full — just give us your account details below.</p>' : '') + '</div>' : '') +
         // Not accepted after paying: where to send the refund (in the name of the applicant who paid).
         (rej && paid ? (d.refunded_at ? '<div class="card"><h2>Refund sent</h2><p class="lead" style="margin:0">We sent your holding deposit refund on ' + esc(longDay(d.refunded_at)) + '.</p></div>'
           : d.refund ? '<div class="card"><h2>Refund details received</h2><p class="lead" style="margin:0">Thank you — we’ll refund ' + gbp(m.holding || 0) + ' to ' + esc(d.refund.name) + ' within 24 hours.</p></div>'
@@ -1053,6 +1063,21 @@
           if (!x.ok) { b.disabled = false; b.classList.remove('busy'); if (stk) stk.disabled = false; $('pcErr').textContent = 'Couldn’t send — please try again.'; $('pcErr').hidden = false; return; }
           lastSeen = ''; loadTrack();
         });
+      });
+      if ($('ctCard') && location.hash === '#counter' && !window.__ctScrolled) { window.__ctScrolled = true; setTimeout(function(){ $('ctCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
+      if ($('ctGo')) $('ctGo').addEventListener('click', function(){
+        var amt = parseFloat(String($('ctAmt').value).replace(/[£,\s]/g, '')), per = $('ctPer').value, name = $('ctName').value.trim();
+        var err = function(t){ $('ctErr').textContent = t; $('ctErr').hidden = false; };
+        if (!(amt > 0)) return err('Please enter the rent you can offer.');
+        var asPcm = per === 'pw' ? amt * 52 / 12 : amt;
+        if (asPcm > (m.pcm || 0) * 3 && !confirm('That is ' + gbp(asPcm) + ' a month — is that right?')) return;
+        if (!$('ctOk').checked) return err('Please tick to confirm you commit to this counter-offer.');
+        if (name.length < 3) return err('Please type your full name to confirm.');
+        var b = this; b.disabled = true; b.textContent = 'Sending…';
+        fetch('/api/offers/track/' + tm[1] + '/counter', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: amt, per: per, move_in: $('ctMove').value, note: $('ctNote').value.trim(), name: name, commit: true }) }).then(function(r){ return r.json(); }).then(function(x){
+          if (!x.ok) { b.disabled = false; b.textContent = 'Send my counter-offer'; return err(x.error === 'not-higher' ? 'Your counter-offer needs to be more than your first offer of ' + gbp(m.pcm || 0) + ' a month (or change the move-in date or terms).' : x.error === 'not-allowed' ? 'This offer can’t be changed any more — please contact Residential Realtors on 0207 096 8131.' : 'Couldn’t send — please try again.'); }
+          lastSeen = ''; window.scrollTo(0, 0); loadTrack();
+        })['catch'](function(){ b.disabled = false; b.textContent = 'Send my counter-offer'; err('Couldn’t send — please check your connection and try again.'); });
       });
       if ($('rfCard') && location.hash === '#refund' && !window.__rfScrolled) { window.__rfScrolled = true; setTimeout(function(){ $('rfCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); var fi = $('rfCard').querySelector('input'); if (fi) fi.focus({ preventScroll: true }); }, 200); }
       if ($('rfGo')) $('rfGo').addEventListener('click', function(){

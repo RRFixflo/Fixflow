@@ -10196,6 +10196,39 @@ document.querySelectorAll('.lcu').forEach(function(box){
     offerAlert({ title: 'Refund details in: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' gave their account for the holding deposit refund (' + gbp((o.data.money || {}).holding) + '). Open Offers in Fixflow.', tags: ['moneybag'] }).catch(function () {});
     res.json({ ok: true });
   }));
+  // Rejected and invited to counter: the applicant offers a new rent (and optionally move-in date / note), ticks that
+  // they commit to it and types their name. The offer goes back to "to decide" at the new rent; the earlier figure,
+  // the commitment and their IP are kept (data.counters) and in the audit trail on the signed offer PDF.
+  app.post('/api/offers/track/:token/counter', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = String(req.params.token || ''), b = req.body || {};
+    if (!/^[\w-]{16,40}$/.test(t)) return res.status(404).json({ ok: false, error: 'not-found' });
+    const o = (await p.query('SELECT id, property_address, lead_name, offer_pw, data, status FROM offers WHERE track_token = $1', [t])).rows[0];
+    if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
+    const d = o.data || {}, ci = d.counter_invite;
+    if (o.status !== 'rejected' || !ci || !ci.open) return res.status(409).json({ ok: false, error: 'not-allowed' });
+    const per = b.per === 'pw' ? 'pw' : 'pcm', amt = Math.round(parseFloat(String(b.amount || '').replace(/[£,\s]/g, '')) * 100) / 100;
+    if (!(amt > 0 && amt < 100000)) return res.status(400).json({ ok: false, error: 'amount' });
+    const name = str(b.name, 120);
+    if (b.commit !== true || !name) return res.status(400).json({ ok: false, error: 'commit' });
+    const old = d.money || {}, oldPcm = old.pcm || Number(o.offer_pw) * 52 / 12;
+    const pw = per === 'pcm' ? Math.round(amt * 12 / 52 * 100) / 100 : amt, m = offerMoney(pw);
+    if (per === 'pcm') { m.pcm = amt; m.rent = amt; m.total = Math.round((amt + m.deposit) * 100) / 100; }
+    if (old.holding != null) m.holding = old.holding;
+    m.balance = Math.round((m.pcm + m.deposit - m.holding) * 100) / 100;
+    const mi = /^\d{4}-\d{2}-\d{2}$/.test(String(b.move_in || '')) ? String(b.move_in) : null, note = str(b.note, 1000) || '';
+    // A higher rent — or, at the same rent, a different move-in date or terms.
+    if (!(m.pcm > oldPcm + 0.009) && !(Math.abs(m.pcm - oldPcm) < 0.01 && ((mi && mi !== d.move_in) || note))) return res.status(400).json({ ok: false, error: 'not-higher' });
+    const c = { at: new Date().toISOString(), pcm: m.pcm, pw: m.pw, was_pcm: Math.round(oldPcm * 100) / 100, move_in: mi, note: note, name: name, ip: String(req.headers['cf-connecting-ip'] || req.ip || '').slice(0, 60), committed: true };
+    const upd = { money: m, counters: (Array.isArray(d.counters) ? d.counters : []).concat([c]), counter_invite: Object.assign({}, ci, { open: false, answered_at: c.at }) };
+    if (!d.original_money) upd.original_money = old;
+    if (mi) upd.move_in = mi;
+    const said = 'Counter-offer made by the applicant: ' + gbp(m.pcm) + ' a month (was ' + gbp(oldPcm) + ')' + (mi ? ', move in ' + certDay(mi) : '') + (note ? ' — "' + note.slice(0, 200) + '"' : '') + '. Committed to going ahead on these terms if accepted; confirmed by ' + name + '.';
+    await p.query("UPDATE offers SET status = 'new', decided_at = NULL, offer_pw = $2, data = data || $3::jsonb, log = log || $4::jsonb WHERE id = $1",
+      [o.id, m.pw, JSON.stringify(upd), JSON.stringify([offerLog(req, said, 'applicant')])]);
+    offerAlert({ title: 'Counter-offer: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' offers ' + gbp(m.pcm) + ' a month (was ' + gbp(oldPcm) + ') and commits to it — OF' + String(o.id).padStart(4, '0') + '. Open Offers in Fixflow to decide.', tags: ['speech_balloon'] }).catch(function () {});
+    res.json({ ok: true });
+  }));
   // The applicant's own view of their offer (by its private link): where it's up to.
   app.get('/api/offers/track/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -10213,7 +10246,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, ref: ref, property: o.property_address, name: String(o.lead_name || '').split(/\s+/)[0], created_at: o.created_at, status: o.status, decided_at: o.decided_at, paid_at: o.paid_at,
       offer_pw: Number(o.offer_pw), money: d.money || {}, move_in: d.move_in || null, stay: d.stay || '', tenants: (d.tenants || []).length, bank: bank, reference: offerPayRef(o.property_address, ref),
       refund: d.refund ? { given_at: d.refund.at, name: d.refund.name } : null, refunded_at: d.refunded_at || null, paid_claim: d.paid_claim || null, paid_amount: o.paid_at ? got : null, short: short, conditions: offerConds(d),
-      id_needs: await offerIdNeeds(p, o), can_add_id: offerCanAddId(o) });
+      id_needs: await offerIdNeeds(p, o), can_add_id: offerCanAddId(o),
+      counter_invite: o.status === 'rejected' && d.counter_invite && d.counter_invite.open ? { hint_pcm: d.counter_invite.hint_pcm || null } : null,
+      counter: Array.isArray(d.counters) && d.counters.length ? (function (c) { return { at: c.at, pcm: c.pcm, was_pcm: c.was_pcm, move_in: c.move_in }; })(d.counters[d.counters.length - 1]) : null });
   }));
   // Right to rent can be left for later on the form: after paying, the applicant adds each tenant's ID and
   // share code from their tracking page (nothing else in the offer can be changed once it's sent).
@@ -10364,6 +10399,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.status === 'accepted' && !Array.isArray(b.credit) && req.user && req.user.id) { vals.push(JSON.stringify([{ id: req.user.id, name: req.user.name || '', share: 100 }])); sets.push("data = CASE WHEN data ? 'credit' THEN data ELSE data || jsonb_build_object('credit', $" + vals.length + "::jsonb) END"); }
     if (['new', 'accepted', 'rejected', 'withdrawn'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length, "decided_at = CASE WHEN $" + vals.length + " = 'new' THEN NULL ELSE now() END"); notes.push(b.status === 'accepted' ? 'Offer accepted' : b.status === 'rejected' ? 'Offer rejected' : b.status === 'withdrawn' ? 'Marked as withdrawn' : 'Decision undone'); }
     if (typeof b.paid === 'boolean') { sets.push('paid_at = ' + (b.paid ? 'coalesce(paid_at, now())' : 'NULL')); notes.push(b.paid ? 'Holding deposit received' : 'Holding deposit marked not received'); if (!b.paid) sets.push("data = data - 'paid_amount'"); }
+    // Rejecting: why, and whether the applicant is invited to make a counter-offer (they commit to it on their tracking page).
+    const rj = b.status === 'rejected' && b.reject && typeof b.reject === 'object' ? b.reject : null;
+    if (rj) {
+      const hint = rj.hint_pcm != null && String(rj.hint_pcm).trim() !== '' ? Math.round(parseFloat(String(rj.hint_pcm).replace(/[£,\s]/g, '')) * 100) / 100 : null;
+      if (hint != null && !(hint > 0 && hint < 100000)) return res.status(400).json({ ok: false, error: 'amount' });
+      const REASONS = { low: 'The offer is too low', other_app: 'The landlord has chosen another applicant', terms: 'The terms or move-in date don’t suit the landlord', other: '' };
+      const reason = Object.prototype.hasOwnProperty.call(REASONS, rj.reason) ? rj.reason : 'other';
+      const rec = { reason: reason, note: str(rj.note, 1000) || '', at: new Date().toISOString(), by: req.user ? req.user.name : 'Office' };
+      vals.push(JSON.stringify(rec)); dataSets.push("jsonb_build_object('reject', $" + vals.length + "::jsonb)");
+      if (rj.counter === true) { vals.push(JSON.stringify({ at: rec.at, by: rec.by, hint_pcm: hint, open: true })); dataSets.push("jsonb_build_object('counter_invite', $" + vals.length + "::jsonb)"); notes.push('Applicant invited to make a counter-offer' + (hint ? ' (the landlord would consider ' + gbp(hint) + ' a month)' : '')); }
+      else dataSets.push("jsonb_build_object('counter_invite', 'null'::jsonb)");
+      if (REASONS[reason]) notes.push('Reason: ' + REASONS[reason]);
+    }
     // What actually arrived (people don't always pay the exact amount).
     const amt = b.paid_amount != null ? Math.round(parseFloat(String(b.paid_amount).replace(/[£,\s]/g, '')) * 100) / 100 : null;
     if (amt != null && b.paid !== false) {
@@ -10388,7 +10436,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (dataSets.length) { if (sets.some(function (x) { return /^data = /.test(x); })) { const i = sets.findIndex(function (x) { return /^data = /.test(x); }); sets[i] = sets[i].replace(/^data = /, 'data = ').replace(/ END$/, ' END || ' + dataSets.join(' || ')); } else sets.push('data = data || ' + dataSets.join(' || ')); }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
     if (notes.length) { vals.push(JSON.stringify(notes.map(function (t) { return offerLog(req, t + (req.role === 'offers' ? ' (offers staff)' : '')); }))); sets.push('log = log || $' + vals.length + '::jsonb'); }
-    const r = await p.query('UPDATE offers SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id, property_address, lead_name, offer_pw, data', vals);
+    const r = await p.query('UPDATE offers SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id, property_address, lead_name, lead_email, offer_pw, data, paid_at, track_token', vals);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     // Tell staff (and the office, when staff did it) about decisions and deposits.
     const ro = r.rows[0], oref = 'OF' + String(ro.id).padStart(4, '0'), byStaff = req.role === 'offers', tag = byStaff ? ' (by offers staff)' : '';
@@ -10399,9 +10447,39 @@ document.querySelectorAll('.lcu').forEach(function(box){
       refundEmailed = await refundMail(req, { email: refundNew.lead_email, name: refundNew.lead_name, address: refundNew.property_address, ref: oref, what: 'holding deposit', amount: rd.paid_amount != null ? Number(rd.paid_amount) : (rd.money || {}).holding, refund: rd.refund }).catch(function () { return false; });
       if (refundEmailed) await p.query("UPDATE offers SET log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Refund confirmation emailed to ' + refundNew.lead_email)])]).catch(function () {});
     }
+    // Rejected: email the applicant (with the counter-offer link when invited, else the refund link if they paid).
+    let rejectEmailed = null;
+    if (rj && rj.email !== false) {
+      rejectEmailed = await offerRejectMail(req, ro).catch(function (e) { console.error('Offer rejected email failed:', e.message); return false; });
+      await p.query("UPDATE offers SET log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, rejectEmailed ? 'Applicant emailed that the offer wasn’t accepted' + ((ro.data || {}).counter_invite ? ', with the counter-offer link' : '') + ' (' + ro.lead_email + ')' : 'Offer rejected email not sent' + (ro.lead_email ? '' : ' — no email address'))])]).catch(function () {});
+    }
     if (said) offerAlert({ title: said[0] + shortAddrText(ro.property_address), message: (ro.lead_name || 'Applicant') + ' · ' + gbp(ro.offer_pw) + ' pw · ' + oref + (b.paid === true ? ' · ' + gbp(amt != null ? amt : ((ro.data || {}).money || {}).holding) + ' received' + (amt != null && Math.abs(amt - Number(((ro.data || {}).money || {}).holding || 0)) > 0.009 ? ' (holding deposit ' + gbp(((ro.data || {}).money || {}).holding) + ')' : '') : '') + tag, tags: said[1] }, { office: byStaff });
-    res.json({ ok: true, refund_emailed: refundEmailed });
+    res.json({ ok: true, refund_emailed: refundEmailed, reject_emailed: rejectEmailed });
   }));
+  // "Your offer wasn't accepted" — kind, with the reason when it's one we can share, the counter-offer link (their
+  // tracking page, where they commit to it) or, when they paid and aren't invited to counter, the refund link.
+  async function offerRejectMail(req, o) {
+    const to = String(o.lead_email || '').trim(); if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(to) || !canEmail() || !sendEmail || !o.track_token) return false;
+    const d = o.data || {}, rj = d.reject || {}, ci = d.counter_invite && d.counter_invite.open ? d.counter_invite : null, ref = 'OF' + String(o.id).padStart(4, '0');
+    const track = (OFFER_ORIGIN || PUBLIC_URL) + '/offer/track/' + o.track_token, pcm = (d.money || {}).pcm || Number(o.offer_pw) * 52 / 12;
+    const why = { low: 'the landlord felt the rent offered is lower than they are looking for', other_app: 'the landlord has decided to go ahead with another applicant', terms: 'the terms or the move-in date don’t suit the landlord' }[rj.reason];
+    const subject = 'Your offer for ' + shortAddrText(o.property_address) + ' (' + ref + ')';
+    let text = 'Dear ' + (String(o.lead_name || '').trim().split(/\s+/)[0] || 'Applicant') + ',\n\n' +
+      'Thank you for your offer of ' + gbp(pcm) + ' a month for ' + o.property_address + '. Unfortunately the landlord has not accepted it' + (why ? ' — ' + why : '') + '.\n\n' +
+      (rj.note ? rj.note + '\n\n' : '');
+    if (ci) {
+      text += 'Before the property is offered to anyone else, you are welcome to make a counter-offer.' + (ci.hint_pcm ? ' The landlord would consider ' + gbp(ci.hint_pcm) + ' a month.' : '') + '\n\n' +
+        'Make your counter-offer: ' + track + '#counter\n\n' +
+        'It only takes a minute: enter the rent you can offer, and confirm you are committed to going ahead on those terms if the landlord accepts.' +
+        (o.paid_at ? ' Your holding deposit stays with us while you decide. If you would rather not make a counter-offer, or it isn’t accepted, it will be refunded in full within 24 hours of you giving us your account details on the same page.' : '') + '\n\n';
+    } else if (o.paid_at) {
+      text += 'Your holding deposit will be refunded in full within 24 hours of you telling us where to send it: ' + track + '#refund\n\n';
+    }
+    text += 'If you have any questions, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\nResidential Realtors';
+    const r = await sendEmail({ to: [to], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, ci ? 'Would you like to make a counter-offer?' : 'Your offer') }).catch(function (e) { return { ok: false, error: e.message }; });
+    logSent(req, [to], [], 'info@residentialrealtors.co.uk', subject, text, r);
+    return !!(r && r.ok);
+  }
   // Right to rent: the office runs the check on GOV.UK (it needs their sign-in and
   // a person to match the photo to the tenant), then records the outcome here,
   // optionally with the result saved from GOV.UK. Result files are kept with
@@ -10779,7 +10857,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     heading('Activity', S5);
     // Events: signing evidence first, then the offer's history.
     const who = function (by) { return by === 'applicant' ? o.lead_name : by === 'staff' ? 'Residential Realtors (offers staff)' : by === 'system' ? 'Fixflow' : 'Residential Realtors'; };
-    const PUBLIC = /^(Offer submitted|Offer accepted|Offer rejected|Holding deposit received|Holding deposit refund sent|Offer withdrawn|Applicant|Refund account|Decision undone|Holding deposit marked not received|Refund marked)/;
+    const PUBLIC = /^(Offer submitted|Offer accepted|Offer rejected|Counter-offer|Holding deposit received|Holding deposit refund sent|Offer withdrawn|Applicant|Refund account|Decision undone|Holding deposit marked not received|Refund marked)/;
     const ev = [];
     if (audit.started_at) ev.push({ at: audit.started_at, kind: 'view', title: 'Offer form opened by ' + o.lead_name, lines: [] });
     ev.push({ at: d.signed_at || o.created_at, kind: 'tick', title: 'Holding deposit terms accepted', lines: ['All 6 non-refundable points ticked one by one, and the declaration agreed'] });
