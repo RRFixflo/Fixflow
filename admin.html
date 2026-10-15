@@ -10821,6 +10821,8 @@
       (unpaid.length ? '<h4 class="la-sub">Outstanding invoices</h4><div class="list">' + unpaid.map(function(i){ return invRowHtml(i, true); }).join('') + '</div>' : '') +
       (jobsOpen.length ? '<h4 class="la-sub">Outstanding work</h4><div class="list">' + jobsOpen.map(rowHtml).join('') + '</div>' : '');
     box.onclick = function(e){
+      // A job under Outstanding work opens the job (the tick box only selects it).
+      var jb = e.target.closest('.job'); if (jb && jb.dataset.id && !e.target.closest('input')) { openJob(Number(jb.dataset.id)); return; }
       var t = e.target.closest('[data-la-tid]'); if (t) { box.dataset.tid = t.dataset.laTid; box.dataset.all = ''; acctDraw(box, a, o); return; }
       if (e.target.closest('[data-la-all]')) { box.dataset.all = allRows ? '' : '1'; acctDraw(box, a, o); return; }
       if (e.target.closest('[data-la-full]')) openLlStatement(o.l, { rows: rows, inv_links: (a && a.inv_links) || {}, inv_what: (a && a.inv_what) || {} }, unpaid, prop ? prop.address : (o.prop || (a && a.props && a.props.length === 1 ? a.props[0].address : '')));
@@ -16340,14 +16342,17 @@
   }
   function stmtSummary(m){
     var fees = r2(m.sub + m.vat);
-    return (m.n === 0 ? 'Move-in · ' : '') + 'Rent ' + gbp(m.rent) + (m.deposit ? ' + deposit ' + gbp(m.deposit) : '') + ((m.credits || []).length ? ' + ' + m.credits.map(function(c){ return esc(c.label) + ' ' + gbp(c.amount); }).join(' + ') : '') + (fees ? ' − fees ' + gbp(fees) + (m.vat ? ' (inc. VAT)' : '') : '') +
+    return (m.n === 0 ? 'Move-in · ' : '') + 'Rent ' + gbp(m.rent) + ((m.paid_in || []).length ? ' (in ' + m.paid_in.length + ' payments)' : '') + (m.deposit ? ' + deposit ' + gbp(m.deposit) : '') + ((m.credits || []).length ? ' + ' + m.credits.map(function(c){ return esc(c.label) + ' ' + gbp(c.amount); }).join(' + ') : '') + (fees ? ' − fees ' + gbp(fees) + (m.vat ? ' (inc. VAT)' : '') : '') +
       (m.bf ? ' − brought forward ' + gbp(m.bf) : '') + ' → ' + (stmtOwes(m) ? '<b style="color:var(--brick)">landlord still owes ' + gbp(-m.balance) + '</b>' : '<b>' + gbp(m.balance) + '</b> to pay the landlord' + (m.bf ? ' <span style="color:var(--green, #16a34a)">✓ cleared what they owed</span>' : ''));
   }
+  // One payment towards a rent paid in several: "£2,090.00 received 13 October 2026 from Jane".
+  function stmtPaidIn(x){ return gbp(x.amount) + (x.date ? ' received ' + longDay(x.date) : '') + (x.who ? ' from ' + x.who : ''); }
   function stmtTcy(id){ var t = tenancies.filter(function(x){ return x.id === Number(id); })[0]; return t ? t.data || {} : null; }
   // The text for one statement in an email: its lines, closing balance and what happens next.
   function stmtMailBlock(x, m, withAddr){
     var cfg = meta.invoice || {}; m = stmtWithPend(x.tenancy_id, m);
     var lines = ['- Rent for ' + longDay(m.from) + ' to ' + longDay(m.to) + ': ' + gbp(m.rent)];
+    (m.paid_in || []).forEach(function(x, i){ if (!i) lines.push('    paid in ' + m.paid_in.length + ' payments:'); lines.push('    · ' + stmtPaidIn(x)); });
     if (m.deposit) lines.push('- Deposit: ' + gbp(m.deposit));
     (m.credits || []).forEach(function(c){ lines.push('- ' + c.label + ': ' + gbp(c.amount)); });
     m.fees.forEach(function(f){ var iu = f.invoice_id && stmtInv[f.invoice_id] && stmtInv[f.invoice_id].url; lines.push('- ' + stmtInvLabel(f) + ': ' + gbp(f.amount) + (f.vat ? ' + VAT ' + gbp(f.vat) : m.vatOn && !f.invoice_id ? ' (no VAT)' : '') + (iu ? '\n  View the invoice: ' + iu : '')); });
@@ -19205,7 +19210,7 @@
     // Always one page: the gaps (then the rows) shrink so everything ends above the footer.
     var owes = c.balance < 0, bank = owes && cfg.payee && cfg.accountNumber;
     var fy = doc.internal.pageSize.getHeight() - 90, limit = fy - 16;
-    var incRows = 1 + (c.deposit ? 1 : 0) + (m.credits || []).length, feeRows = Math.max(1, c.fees.length), smalls = (c.vat ? 1 : 0) + (m.bf ? 1 : 0) + (m.bf_inv || []).length;
+    var incRows = 1 + (m.paid_in || []).length + (c.deposit ? 1 : 0) + (m.credits || []).length, feeRows = Math.max(1, c.fees.length), smalls = (c.vat ? 1 : 0) + (m.bf ? 1 : 0) + (m.bf_inv || []).length;
     // Each gap shrinks from its normal size towards a minimum that keeps headings and totals apart;
     // after that, the rows get tighter.
     var GAP = { band: [32, 30], inc: [36, 18], exp: [50, 24], fees: [50, 22], small: [18, 14], total: [38, 20], closing: [32, 18], amount: [24, 17] };
@@ -19218,6 +19223,10 @@
     var gk = function(k){ return GAP[k][1] + (GAP[k][0] - GAP[k][1]) * g; };
     y = top; band(y, 'Income');
     y += gk('band'); doc.setFontSize(rowFont); doc.text('Rent for period', X + 70, y); doc.text(ukDay(m.from) + '  -  ' + ukDay(m.to), X + 160, y); doc.text(pdfGbp(c.rent), R, y, { align: 'right' });
+    // Paid in several payments (e.g. each tenant their share): each one under the rent, in the text — not the money column.
+    (m.paid_in || []).forEach(function(x, i){ y += rh; doc.setFontSize(rowFont * 0.9); doc.setTextColor(80);
+      var pre = 'Paid in ' + m.paid_in.length + ' payments:  ', xo = X + 82 + (i ? doc.getTextWidth(pre) : 0);
+      fit((i ? '' : pre) + stmtPaidIn(x), xo, y, R - 90 - xo, rowFont * 0.9, true); doc.setTextColor(20); doc.setFontSize(rowFont); });
     if (c.deposit) { y += rh; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(pdfGbp(c.deposit), R, y, { align: 'right' }); }
     (m.credits || []).forEach(function(f){ y += rh; fit(f.label, X + 70, y, 300, rowFont); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); });
     y += gk('inc'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Total Income:', R - 150, y, { align: 'right' }); doc.text(pdfGbp(c.income), R, y, { align: 'right' });
