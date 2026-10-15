@@ -10367,6 +10367,7 @@
     $('apType').value = opt ? opt.value : (beds === '0' ? 'Studio' : '');
     $('apLender').value = d.lender || ''; $('apMf').value = d.purpose || '';
     $('apTo').value = x.name || ''; $('apToAddr').value = '';
+    appr.lead = { id: x.id, email: x.email || '', phone: x.phone || '' };   // who asked: the letter's Email / WhatsApp go to them
     if ($('apLlNote')) $('apLlNote').hidden = true;
     apprDraw();
     if (pc && beds !== '') setTimeout(apprAuto, 50);
@@ -13606,11 +13607,12 @@
         var m = e.target.closest('[data-apm]'); if (m) { appr.mode = m.dataset.apm; apprDraw(); return; }
         if (e.target.closest('#apAuto')) { apprAuto(); return; }
         var aw = e.target.closest('[data-ap-wa]');
-        if (aw) { var wid = Number(aw.dataset.apWa), win = window.open('about:blank', '_blank'), ph = apprLl && apprLl.phone && !aw.dataset.addr ? waNumber(apprLl.phone) : '';
+        if (aw) { var wid = Number(aw.dataset.apWa), win = window.open('about:blank', '_blank'), ph = aw.dataset.addr ? (aw.dataset.phone ? waNumber(aw.dataset.phone) : '') : apprLl && apprLl.phone ? waNumber(apprLl.phone) : appr.lead && appr.lead.phone ? waNumber(appr.lead.phone) : '';
           api('POST', '/api/admin/valuations/' + wid + '/link').then(function(d){
             if (!d || !d.ok) { if (win) win.close(); return toast('Couldn’t make the link'); }
             var first = String(aw.dataset.addr ? (aw.dataset.name || '') : ($('apTo').value || '')).trim().split(/\s+/)[0], addr = shortAddr(aw.dataset.addr || $('apAddr').value || '') || 'your property';
-            var msg = 'Hi' + (first ? ' ' + first : '') + ', here is our appraisal for ' + addr + ', with the similar homes nearby our figures are based on:\n' + d.url + '\n\nAny questions, just reply or call 0207 096 8131.\nResidential Realtors';
+            var mortW = aw.dataset.addr ? !!aw.dataset.mort : $('apPurpose').value === 'mortgage';
+            var msg = 'Hi' + (first ? ' ' + first : '') + (mortW ? ', here is our rental valuation letter for ' + addr + ', ready to send to your lender or broker:\n' : ', here is our appraisal for ' + addr + ', with the similar homes nearby our figures are based on:\n') + d.url + '\n\nAny questions, just reply or call 0207 096 8131.\nResidential Realtors';
             var u = 'https://wa.me/' + ph + '?text=' + encodeURIComponent(msg); if (win) { try { win.opener = null; } catch (er) {} win.location.href = u; } else window.open(u, '_blank', 'noopener');
           }); return; }
         var zo = e.target.closest('[data-zp-open]');
@@ -13689,7 +13691,7 @@
     }
     apprRender();
     $('apprHost').appendChild($('apprBody'));
-    apprLl = l || null;
+    apprLl = l || null; appr.lead = null;
     if (!l) { $('apprModal').hidden = false; return; }
     var ps = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; });
     if (!$('apAddr').value.trim() && ps.length) $('apAddr').value = ps[0];
@@ -13857,7 +13859,7 @@
     api('POST', '/api/admin/valuations', { appraisal: true, landlord_id: apprLl ? apprLl.id : null, address: addr, ptype: $('apType').value, beds: $('apBeds').value.trim(), baths: $('apBaths').value.trim(),
       sales: !!s, lettings: !!r, sales_low: s ? (ov.slo || s.est) : null, sales_high: s ? (ov.shi || ov.slo || s.est) : null, let_low: r ? (ov.llo || r.est) : null, let_high: r ? (ov.lhi || ov.llo || r.est) : null,
       comps_sale: s ? clean(appr.sale, false) : [], comps_let: r ? clean(appr.let, true) : [], miles: $('apMiles').value, to_name: $('apTo').value.trim(), to_address: $('apToAddr').value.trim(), highlights: $('apHi').value.trim(),
-      include_fees: !mortL, purpose: mortL ? 'mortgage' : '', lender: mortL ? $('apLender').value.trim() : '', mortgage_for: mortL ? $('apMf').value : '', signer: meta.user && meta.user.id && meta.user.name ? meta.user.name : '' }).then(function(d){
+      include_fees: !mortL, purpose: mortL ? 'mortgage' : '', lender: mortL ? $('apLender').value.trim() : '', mortgage_for: mortL ? $('apMf').value : '', to_email: appr.lead ? appr.lead.email : '', to_phone: appr.lead ? appr.lead.phone : '', lead_id: appr.lead ? appr.lead.id : null, signer: meta.user && meta.user.id && meta.user.name ? meta.user.name : '' }).then(function(d){
       busy(btn, false);
       if (!d || !d.ok) return err('Couldn’t make the report — please check the details.');
       // Ready: send it straight to the landlord from here (no new tab to get lost in).
@@ -13873,7 +13875,7 @@
       if (!$('apList')) return;
       var list = ((d && d.items) || []).filter(function(x){ return x.data && x.data.appraisal; }).slice(0, 10);
       $('apList').innerHTML = list.length ? list.map(function(x){ var v = x.data, u = '/api/admin/valuations/' + x.id + '/pdf';
-        return '<div class="fee-run" style="grid-template-columns:minmax(0,1fr) auto"><span><b>' + esc(String(x.address).split(',').slice(0, 2).join(',')) + '</b><small>' + esc([v.sales ? 'Value ' + gbp0(v.sales_low) : '', v.lettings ? 'Rent ' + gbp0(v.let_low) + ' pcm' : '', fmtShort(x.created_at), x.created_by || ''].filter(Boolean).join(' · ')) + '</small></span><span><a class="btn small ghost" href="' + u + '" target="_blank" rel="noopener">Open</a> <a class="btn small ghost" href="' + u + '?dl=1">⬇</a>' + (meta.canEmail ? ' <button type="button" class="btn small ghost" data-ap-mail="' + x.id + '" title="Email the report">✉</button>' : '') + ' <button type="button" class="btn small ghost" data-ap-wa="' + x.id + '" data-addr="' + esc(x.address) + '" data-name="' + esc(v.to_name || '') + '" title="Send by WhatsApp">💬</button></span></div>'; }).join('') : 'None yet.';
+        return '<div class="fee-run" style="grid-template-columns:minmax(0,1fr) auto"><span><b>' + esc(String(x.address).split(',').slice(0, 2).join(',')) + '</b><small>' + esc([v.sales ? 'Value ' + gbp0(v.sales_low) : '', v.lettings ? 'Rent ' + gbp0(v.let_low) + ' pcm' : '', fmtShort(x.created_at), x.created_by || ''].filter(Boolean).join(' · ')) + '</small></span><span><a class="btn small ghost" href="' + u + '" target="_blank" rel="noopener">Open</a> <a class="btn small ghost" href="' + u + '?dl=1">⬇</a>' + (meta.canEmail ? ' <button type="button" class="btn small ghost" data-ap-mail="' + x.id + '" title="Email the report">✉</button>' : '') + ' <button type="button" class="btn small ghost" data-ap-wa="' + x.id + '" data-addr="' + esc(x.address) + '" data-name="' + esc(v.to_name || '') + '" data-phone="' + esc(v.to_phone || '') + '" data-mort="' + (v.purpose === 'mortgage' ? '1' : '') + '" title="Send by WhatsApp">💬</button></span></div>'; }).join('') : 'None yet.';
     });
   }
   document.addEventListener('toggle', function(e){ if (e.target && e.target.id === 'offAppr' && e.target.open) apprRender(); }, true);

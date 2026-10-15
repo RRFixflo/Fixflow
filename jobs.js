@@ -13124,6 +13124,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       to_name: str(b.to_name, 200) || '', salutation: str(b.salutation, 200) || '', to_address: str(b.to_address, 500) || '', highlights: str(b.highlights, 2000) || '', note: str(b.note, 2000) || '',
       signer: str(b.signer, 120) || '', signer_title: str(b.signer_title, 120) || '', include_fees: b.include_fees !== false,
       find_pct: pctNum(b.find_pct), collect_pct: pctNum(b.collect_pct), both_pct: pctNum(b.both_pct), sales_fee: str(b.sales_fee, 120) || '' };
+    // Made from a website enquiry (e.g. a mortgage rental letter request): who asked, so Email / WhatsApp go to them.
+    const te = String(b.to_email || '').trim().toLowerCase();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(te)) v.to_email = te.slice(0, 200);
+    if (str(b.to_phone, 40)) v.to_phone = str(b.to_phone, 40);
+    if (parseInt(b.lead_id, 10) > 0) v.lead_id = parseInt(b.lead_id, 10);
     // A rental valuation letter for a buy-to-let mortgage (lettings only, addressed to the lender).
     if (b.purpose === 'mortgage') { v.purpose = 'mortgage'; v.sales = false; v.lettings = true; v.include_fees = false; v.lender = str(b.lender, 120) || ''; v.mortgage_for = ['Remortgage', 'Buying a buy-to-let', 'Product transfer / other'].indexOf(String(b.mortgage_for || '')) !== -1 ? String(b.mortgage_for) : ''; }
     // A property appraisal: the home's details and the similar homes (picked by hand from Rightmove within a mile)
