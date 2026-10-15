@@ -12910,7 +12910,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, lead: Number(r.lead) || 0, note: Number(r.note) || 0 });
   }));
   app.get('/api/admin/crm', withDb(async function (p, req, res) {
-    const items = (await p.query('SELECT * FROM valuation_requests ORDER BY id DESC LIMIT 1000')).rows.filter(function (x) { return req.role !== 'offers' || !x.data || x.data.kind !== 'cert'; });   // certificate bookings: the owner only
+    const items = (await p.query('SELECT * FROM valuation_requests ORDER BY id DESC LIMIT 1000')).rows;   // every lead, certificate bookings included (staff see them too — the owner asked)
     let subs = [];
     try { subs = (await p.query('SELECT id, created_at, email, name, freq, confirmed_at, unsubscribed_at, last_sent_at, sent_count FROM landlord_alert_subs ORDER BY id DESC LIMIT 2000')).rows; } catch (e) {}
     const notes = (await p.query('SELECT id, ref, note, by_name, auto, at FROM crm_notes ORDER BY at DESC LIMIT 5000')).rows;
