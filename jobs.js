@@ -8432,6 +8432,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, replyTo: replyTo });
   });
   // Keep a copy of an email we sent for someone (Sent emails, and the person's history).
+  // Refund confirmation to the applicant, sent automatically when staff mark a holding deposit / reservation refund
+  // as sent (only the first time). Says how much, what for, and the account it went to (last 4 digits only).
+  async function refundMail(req, o) {
+    const to = String(o.email || '').trim(); if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(to) || !canEmail() || !sendEmail) return false;
+    const acc = String((o.refund && (o.refund.account || o.refund.iban)) || '').replace(/\s/g, ''), last4 = acc.length >= 4 ? acc.slice(-4) : '';
+    const subject = 'Your refund has been sent — ' + shortAddrText(o.address) + (o.ref ? ' (' + o.ref + ')' : '');
+    const text = 'Dear ' + (String(o.name || '').trim().split(/\s+/)[0] || 'Applicant') + ',\n\n' +
+      'This is to confirm that we have sent your refund' + (o.amount ? ' of ' + gbp(o.amount) : '') + ' — your ' + o.what + ' for ' + o.address + (o.ref ? ' (reference ' + o.ref + ')' : '') + '.\n\n' +
+      (last4 ? 'It was sent by bank transfer to the account ending ' + last4 + (o.refund && o.refund.name ? ' (' + o.refund.name + ')' : '') + '. ' : 'It was sent by bank transfer to the account details you gave us. ') +
+      'Bank transfers usually arrive within a few hours, but can take up to 2 working days.\n\nIf it hasn’t arrived by then, or anything looks wrong, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\nResidential Realtors';
+    const r = await sendEmail({ to: [to], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, 'Your refund has been sent') }).catch(function (e) { return { ok: false, error: e.message }; });
+    logSent(req, [to], [], 'info@residentialrealtors.co.uk', subject, text, r);
+    return !!(r && r.ok);
+  }
   function logSent(req, to, cc, replyTo, subject, text, r, files) {
     return db().then(function (p) { return p && p.query("DELETE FROM sent_emails WHERE user_name = 'Automatic' AND subject = $1 AND to_list = $2::text[] AND created_at > now() - interval '5 minutes'", [subject, [].concat(to || [])]).catch(function () {}).then(function () { return p; }); }).then(function (p) { return p && p.query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error, files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
       [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', [].concat(to || []), [].concat(cc || []), replyTo || null, subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300), JSON.stringify((files || []).map(function (f) { return { id: f.id, name: f.name, size: f.size || 0 }; }))]); }).catch(function (e) { console.error('Sent email log failed:', e.message); });
@@ -10307,6 +10321,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       notes.push(cr.length ? 'Offer credited to ' + cr.map(function (c) { return c.name + (cr.length > 1 ? ' (' + c.share + '%)' : ''); }).join(' and ') : 'Offer credit cleared');
     }
     if (b.refund_asked === true) dataSets.push("jsonb_build_object('refund_asked', to_jsonb(now()))");
+    // Refund marked as sent for the first time: the applicant gets a confirmation email (after the update below).
+    const refundNew = b.refunded === true ? (await p.query("SELECT id, lead_name, lead_email, property_address, paid_at, data FROM offers WHERE id = $1 AND (data->>'refunded_at') IS NULL", [id])).rows[0] : null;
     if (typeof b.refunded === 'boolean') { dataSets.push("jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
     if (dataSets.length) { if (sets.some(function (x) { return /^data = /.test(x); })) { const i = sets.findIndex(function (x) { return /^data = /.test(x); }); sets[i] = sets[i].replace(/^data = /, 'data = ').replace(/ END$/, ' END || ' + dataSets.join(' || ')); } else sets.push('data = data || ' + dataSets.join(' || ')); }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
@@ -10316,8 +10332,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Tell staff (and the office, when staff did it) about decisions and deposits.
     const ro = r.rows[0], oref = 'OF' + String(ro.id).padStart(4, '0'), byStaff = req.role === 'offers', tag = byStaff ? ' (by offers staff)' : '';
     const said = b.status === 'accepted' ? ['Offer accepted: ', ['white_check_mark']] : b.status === 'rejected' ? ['Offer rejected: ', ['x']] : b.paid === true ? ['Holding deposit in: ', ['moneybag']] : null;
+    let refundEmailed = null;
+    if (refundNew) {
+      const rd = refundNew.data || {};
+      refundEmailed = await refundMail(req, { email: refundNew.lead_email, name: refundNew.lead_name, address: refundNew.property_address, ref: oref, what: 'holding deposit', amount: rd.paid_amount != null ? Number(rd.paid_amount) : (rd.money || {}).holding, refund: rd.refund }).catch(function () { return false; });
+      if (refundEmailed) await p.query("UPDATE offers SET log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Refund confirmation emailed to ' + refundNew.lead_email)])]).catch(function () {});
+    }
     if (said) offerAlert({ title: said[0] + shortAddrText(ro.property_address), message: (ro.lead_name || 'Applicant') + ' · ' + gbp(ro.offer_pw) + ' pw · ' + oref + (b.paid === true ? ' · ' + gbp(amt != null ? amt : ((ro.data || {}).money || {}).holding) + ' received' + (amt != null && Math.abs(amt - Number(((ro.data || {}).money || {}).holding || 0)) > 0.009 ? ' (holding deposit ' + gbp(((ro.data || {}).money || {}).holding) + ')' : '') : '') + tag, tags: said[1] }, { office: byStaff });
-    res.json({ ok: true });
+    res.json({ ok: true, refund_emailed: refundEmailed });
   }));
   // Right to rent: the office runs the check on GOV.UK (it needs their sign-in and
   // a person to match the photo to the tenant), then records the outcome here,
@@ -14886,8 +14908,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return res.json({ ok: true });
     }
     if (typeof b.refunded === 'boolean') {
+      const first = b.refunded && !(t.data || {}).refunded_at;
       await p.query("UPDATE pvr_reservations SET data = " + (b.refunded ? "data || jsonb_build_object('refunded_at', to_jsonb(now()))" : "data - 'refunded_at'") + ' WHERE id = $1', [id]);
-      await log(b.refunded ? 'Refund sent' : 'Refund marked not sent'); return res.json({ ok: true });
+      await log(b.refunded ? 'Refund sent' : 'Refund marked not sent');
+      // First time marked as sent: the applicant gets a confirmation email.
+      let emailed = null;
+      if (first) { const td = t.data || {}; emailed = await refundMail(req, { email: t.email, name: t.name, address: t.property_address, ref: pvrRef(id), what: 'pre-viewing reservation payment', amount: td.paid_amount != null ? Number(td.paid_amount) : Number(t.amount) || null, refund: td.refund }).catch(function () { return false; }); if (emailed) await log('Refund confirmation emailed to ' + t.email); }
+      return res.json({ ok: true, refund_emailed: emailed });
     }
     if (b.viewing_at !== undefined) {
       const at = Date.parse(b.viewing_at), v = at ? new Date(at).toISOString() : null;
