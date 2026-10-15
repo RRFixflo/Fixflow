@@ -13347,6 +13347,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
       wrap('Independent redress, client money protection and deposit protection.', F, 6.8, W - M - 14 - ax - 4).slice(0, 3).forEach(function (ln, i, all) { text(ln, ax + 4, y - 24 - (i - (all.length - 1) / 2) * 9 - 3, 6.8, F, C.soft); });
       y -= 64;
     }
+    // A mortgage letter goes to the lender, but the owner reads it first: a box below the sign-off inviting them to let
+    // or manage the property with us (the owner asked), kept apart from the letter itself.
+    if (mort) {
+      const ll = wrap('Residential Realtors can find your tenant, collect the rent each month or fully manage the property for you - with free advice on the rent, safety certificates and licensing. Call 0207 096 8131 or email info@residentialrealtors.co.uk for a no-obligation chat, quoting ' + ref + '.', F, 9, CW - 28);
+      const bh = 34 + ll.length * 12; ensure(bh + 14);
+      rr(M, y, CW, bh, 10, C.greenBg);
+      text('Letting this property? We would be glad to help', M + 14, y - 20, 10.5, B, C.green);
+      ll.forEach(function (ln, i) { text(ln, M + 14, y - 36 - i * 12, 9, F, C.ink); });
+      y -= bh + 14;
+    }
     if (y - 22 < 64) newPage(false);   // the small print may sit just above the footer
     wrap(mort ? 'This letter is a letting agent\'s opinion of the rent the property should achieve. It is not a valuation of the property\'s capital value, a survey or a RICS Red Book valuation, which the lender arranges separately. The figure reflects the lettings market on the date above and may change.' : 'This is a market appraisal to help you decide how to market your property. It is not a formal valuation for mortgage, tax or legal purposes (such as a RICS Red Book valuation). The figures reflect market conditions on the date above and may change; we suggest reviewing them after three months.', F, 7.2, CW).forEach(function (ln) { text(ln, M, y, 7.2, F, C.faint); y -= 9.6; });
     const name = ((mort ? 'Rental Valuation Letter' : (v.sales && v.lettings ? 'Sales and Lettings' : v.sales ? 'Sales' : 'Lettings') + ' Valuation') + ' - ' + address).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').slice(0, 120) + '.pdf';
