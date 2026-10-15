@@ -10936,8 +10936,47 @@ document.querySelectorAll('.lcu').forEach(function(box){
         // Changed since it was sent (a cost added, a fee edited, an earlier month amended): send it again.
         // (A record with no figures — marked from a page open before this was added — can't be compared.)
         changed: sent[from] && typeof sent[from] === 'object' && (Number(sent[from].total) || Number(sent[from].balance)) && Math.abs((Number(sent[from].balance) || 0) - balance) > 0.004 ? { was: Number(sent[from].balance) || 0 } : null });
+      // Checked against the money itself before it can go to a landlord (stmtCheck): a statement that disagrees with
+      // what came in or was paid out is flagged and can't be sent until it's put right.
+      out[out.length - 1].check = stmtCheck(d, from, rent, f.fees, balance);
       carry = balance < -0.004 ? -balance : 0;
     }
+    return out;
+  }
+  // Problems that would make a landlord statement wrong, found by comparing it with the records of the money:
+  // the amount actually paid to the landlord for that rent, the rent actually received, and the invoices taken off it.
+  function stmtCheck(d, from, rent, fees, balance) {
+    const out = [], r2 = function (v) { return Math.round((Number(v) || 0) * 100) / 100; };
+    const lp = (d.ll_paid || {})[from], rc = (d.rent_rcvd || {})[from], parts = ((d.ll_paid_parts || {})[from] || []).length;
+    if (lp && lp.amount != null && !parts && Math.abs(r2(lp.amount) - r2(balance)) > 0.01)
+      out.push('Paid to the landlord ' + gbp(r2(lp.amount)) + (lp.at ? ' on ' + certDay(String(lp.at).slice(0, 10)) : '') + ', but this statement says ' + gbp(r2(balance)) + '.');
+    if (rc && rc.amount != null && Number(rc.amount) > 0 && Math.abs(r2(rc.amount) - r2(rent)) > 0.01)
+      out.push('Rent received ' + gbp(r2(rc.amount)) + ', but this statement shows rent of ' + gbp(r2(rent)) + '.');
+    const onIt = (fees || []).map(function (f) { return Number(f.invoice_id); }).filter(Boolean);
+    const missing = ((rc && rc.invoice_ids) || []).map(Number).filter(function (id) { return onIt.indexOf(id) === -1; });
+    if (missing.length) out.push(missing.length + ' invoice' + (missing.length === 1 ? ' was' : 's were') + ' taken off this rent but ' + (missing.length === 1 ? 'isn’t' : 'aren’t') + ' on the statement.');
+    return out;
+  }
+  // Every few hours: if any statement from the last 3 months disagrees with the money, the owner's phone is told
+  // (once a day) — so a wrong statement is caught before anyone sends it, not after.
+  let stmtCheckDay = '';
+  async function stmtWatch() {
+    const p = await db(); if (!p) return;
+    const day = londonDay(); if (stmtCheckDay === day) return;
+    const since = addDaysIso(day, -92), st = await statementsAll(p), bad = [];
+    st.items.forEach(function (x) { x.months.forEach(function (m) { if (m.from >= since && (m.check || []).length) bad.push(shortAddrText(x.address) + ' (' + certDay(m.from) + ')'); }); });
+    if (!bad.length) return;
+    stmtCheckDay = day;
+    ntfy({ title: '⛔ ' + bad.length + ' landlord statement' + (bad.length === 1 ? ' doesn’t' : 's don’t') + ' match the money', message: bad.slice(0, 4).join(', ') + (bad.length > 4 ? ' and ' + (bad.length - 4) + ' more' : '') + ' — they can’t be sent until put right. See the tenancy’s Monthly statements.', priority: 4, tags: ['no_entry'], click: PUBLIC_URL ? PUBLIC_URL + '/admin' : undefined }).catch(function () {});
+  }
+  setTimeout(function () { stmtWatch().catch(function (e) { console.error('Statement check:', e.message); }); }, 5 * 60 * 1000).unref();
+  setInterval(function () { stmtWatch().catch(function (e) { console.error('Statement check:', e.message); }); }, 3 * 3600 * 1000).unref();
+  // The problems (stmtCheck) on the statements in a list of { tenancy_id, from }.
+  async function stmtProblems(p, list) {
+    const want = {}; (list || []).forEach(function (x) { const id = parseInt(x && x.tenancy_id, 10), f = isoDay(x && x.from); if (id && f) (want[id] = want[id] || {})[f] = 1; });
+    if (!Object.keys(want).length) return [];
+    const st = await statementsAll(p), out = [];
+    st.items.forEach(function (x) { if (!want[x.tenancy_id]) return; x.months.forEach(function (m) { if (want[x.tenancy_id][m.from] && m.check && m.check.length) out.push({ tenancy_id: x.tenancy_id, from: m.from, address: x.address, problems: m.check }); }); });
     return out;
   }
   async function statementsAll(p) {
@@ -11636,7 +11675,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const feeInv = rows.filter(function (r) { return r.fee_inv; }).map(function (r) { return Number(r.fee_inv); }).filter(function (id) { return id && unpaidIds.indexOf(id) === -1; });
     const info = unpaidIds.length || feeInv.length ? await invoiceInfo(p, unpaidIds.concat(feeInv)) : {};
     // Invoices already taken off a statement: say what each was for too ("Invoice INV-RR-00089 · Gas safety").
-    rows.forEach(function (r) { if (!r.fee_inv) return; const w = info[r.fee_inv] && info[r.fee_inv].what; if (w && /^Invoice\s/.test(r.what)) { r.inv_no = (/^Invoice\s+(\S+)/.exec(r.what) || [])[1]; r.what = w; } delete r.fee_inv; });
+    rows.forEach(function (r) { if (!r.fee_inv) return; const w = info[r.fee_inv] && info[r.fee_inv].what; if (/^Invoice\s/.test(r.what)) { r.inv_no = (/^Invoice\s+(\S+)/.exec(r.what) || [])[1]; if (w) r.what = w; } r.inv_id = Number(r.fee_inv) || null; delete r.fee_inv; });
     tcys.forEach(function (t) {
       const addr = short((t.data || {}).address || t.address);
       (pendI[t.id] || []).forEach(function (g) { g.invoices.forEach(function (i) {
@@ -11737,6 +11776,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // A month's statement sent to the landlord (or not).
   app.post('/api/admin/tenancies/:id/statement', withDb(async function (p, req, res) {
     const b = req.body || {}, from = isoDay(b.from), sent = b.sent !== false;
+    if (sent && from && !(b.force === true && canManageUsers(req))) { const bad = await stmtProblems(p, [{ tenancy_id: jobId(req), from: from }]); if (bad.length) return res.status(409).json({ ok: false, error: 'mismatch', problems: bad }); }
     // What was sent (to spot a statement changed afterwards).
     const snap = { at: new Date().toISOString(), total: money(Math.abs(Number(b.total) || 0)) || 0, balance: Number(b.balance) || 0 };
     if (!from) return res.status(400).json({ ok: false, error: 'from' });
@@ -11748,6 +11788,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // Several statements marked sent at once: [{tenancy_id, from, total, balance}].
   app.post('/api/admin/statements/sent', withDb(async function (p, req, res) {
     const list = (Array.isArray((req.body || {}).items) ? req.body.items : []).slice(0, 500), by = {};
+    if (!((req.body || {}).force === true && canManageUsers(req))) { const bad = await stmtProblems(p, list); if (bad.length) return res.status(409).json({ ok: false, error: 'mismatch', problems: bad }); }
     list.forEach(function (x) { const id = parseInt(x && x.tenancy_id, 10), from = isoDay(x && x.from); if (!id || !from) return; (by[id] = by[id] || {})[from] = { at: new Date().toISOString(), total: money(Math.abs(Number(x.total) || 0)) || 0, balance: Number(x.balance) || 0 }; });
     let n = 0;
     for (const id of Object.keys(by)) {
