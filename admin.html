@@ -19246,23 +19246,29 @@
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
     ['Residential Realtors'].concat(String(cfg.address || '28-30 Harper Road, London, SE1 6AD').split(/\s*,\s*/)).forEach(function(line, i){ doc.text(line, R, 60 + i * 14, { align: 'right' }); });
     var y = 150;
-    var lNow = tcyLandlordNow(d); [lNow.name].concat(lNow.lines).filter(Boolean).forEach(function(line, i){ doc.text(line, X, y + i * 14); });
+    // Wrapped short of the "Date" on the right, so a long address line never runs into it.
+    var lNow = tcyLandlordNow(d), lLines = []; [lNow.name].concat(lNow.lines).filter(Boolean).forEach(function(line){ lLines = lLines.concat(doc.splitTextToSize(String(line), R - 110 - X)); });
+    lLines.forEach(function(line, i){ doc.text(line, X, y + i * 14); });
     doc.text('Date', R - 100, y + 14); doc.text(ukDay(m.date || (m.n ? m.from : d.statement_date) || isoDay(new Date())), R, y + 14, { align: 'right' });
     y = 245; doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('STATEMENT OF ACCOUNT', W / 2, y, { align: 'center' });
     var VX = R - 95;
     // Text that must fit a column on one line: shrink the type a little, and only if it still won't fit,
     // end it at a whole word with "…" — never chopped mid-phrase.
+    var shorten = function(text, w){
+      if (doc.getTextWidth(text) > w) { var words = text.split(' '); while (words.length > 1 && doc.getTextWidth(words.join(' ') + '…') > w) words.pop(); text = words.join(' ').replace(/[\s,(]+$/, '') + '…'; }
+      return text;
+    };
     var fit = function(text, x, yy, w, size, same){
       text = String(text || ''); var fs = size; doc.setFontSize(fs);
       while (!same && doc.getTextWidth(text) > w && fs > Math.max(6, size - 2.5)) { fs -= 0.25; doc.setFontSize(fs); }
-      if (doc.getTextWidth(text) > w) { var words = text.split(' '); while (words.length > 1 && doc.getTextWidth(words.join(' ') + '…') > w) words.pop(); text = words.join(' ').replace(/[\s,(]+$/, '') + '…'; }
+      text = shorten(text, w);
       doc.text(text, x, yy); doc.setFontSize(size);
     };
     var band = function(yy, title, vatCol){
       doc.setFillColor(232, 205, 209); doc.rect(X - 4, yy - 11, R - X + 8, 16, 'F');
       doc.setTextColor(128, 20, 30); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text(title, X - 2, yy + 1); doc.text('NET', R - 2, yy + 1, { align: 'right' });
       if (vatCol) doc.text('VAT', VX, yy + 1, { align: 'right' });
-      doc.setTextColor(20); doc.setFontSize(9.5); doc.text(doc.splitTextToSize(d.address || '', R - X)[0], X - 2, yy + 15);
+      doc.setTextColor(20); fit(d.address || '', X - 2, yy + 15, R - X, 9.5);
       doc.setDrawColor(128, 20, 30); doc.setLineWidth(0.8); doc.line(X - 4, yy + 18, R + 4, yy + 18); doc.setDrawColor(0);
       doc.setFont('helvetica', 'normal');
     };
@@ -19278,21 +19284,41 @@
     var maxG = sum(0), minG = sum(1), tail = bank ? 28 : 14, top = 290, rows = incRows - 1 + feeRows, rh = 15;
     var room = limit - top - tail - rows * rh, g = Math.max(0, Math.min(1, (room - minG) / (maxG - minG)));
     if (room < minG) rh = Math.max(7, (limit - top - tail - minG) / rows);
+    // Too many rows even at the smallest size: carry the rows on over a second page instead of
+    // letting the totals run into the footer.
+    var multi = room < minG && (limit - top - tail - minG) / rows < 7;
+    if (multi) { rh = 12; g = 0; }
     var rowFont = Math.min(9.5, Math.max(5.5, rh * 0.7));
     var gk = function(k){ return GAP[k][1] + (GAP[k][0] - GAP[k][1]) * g; };
+    var foot = function(){
+      doc.setFontSize(6.5); doc.setTextColor(200, 16, 30); doc.setFont('helvetica', 'bold'); doc.text('Residential Realtors', X - 2, fy);
+      doc.setTextColor(40); doc.setFont('helvetica', 'normal');
+      doc.text('Trading name of Estallion Investments Limited', X - 2, fy + 12);
+      doc.text('Head office and registered office: Residential Realtors, ' + (cfg.address || '28-30 Harper Road, London, SE1 6AD'), X - 2, fy + 24);
+      doc.text('Registered in England No. ' + (cfg.companyNo || '') + '. VAT No. ' + (cfg.vatNo || '') + '.', X - 2, fy + 36);
+    };
+    // Only when multi: a new page (same footer) once the next "need" points wouldn't fit above it.
+    var brk = function(need, title, vatCol){
+      if (!multi || y + need <= limit) return;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(80); doc.text('Continued on the next page', R, limit + 6, { align: 'right' });
+      foot(); doc.addPage();
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20); doc.text('STATEMENT OF ACCOUNT (continued)', W / 2, 60, { align: 'center' });
+      y = 100; if (title) { band(y, title, vatCol); y += gk('band'); }
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(rowFont); doc.setTextColor(20);
+    };
     y = top; band(y, 'Income');
     y += gk('band'); doc.setFontSize(rowFont); doc.text('Rent for period', X + 70, y); doc.text(ukDay(m.from) + '  -  ' + ukDay(m.to), X + 160, y); doc.text(pdfGbp(c.rent), R, y, { align: 'right' });
     // Paid in several payments (e.g. each tenant their share): each one under the rent, in the text — not the money column.
-    (m.paid_in || []).forEach(function(x, i){ y += rh; doc.setFontSize(rowFont * 0.9); doc.setTextColor(80);
+    (m.paid_in || []).forEach(function(x, i){ brk(rh, 'Income (continued)'); y += rh; doc.setFontSize(rowFont * 0.9); doc.setTextColor(80);
       var pre = 'Paid in ' + m.paid_in.length + ' payments:  ', xo = X + 82 + (i ? doc.getTextWidth(pre) : 0);
       fit((i ? '' : pre) + stmtPaidIn(x), xo, y, R - 90 - xo, rowFont * 0.9, true); doc.setTextColor(20); doc.setFontSize(rowFont); });
-    if (c.deposit) { y += rh; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(pdfGbp(c.deposit), R, y, { align: 'right' }); }
-    (m.credits || []).forEach(function(f){ y += rh; fit(f.label, X + 70, y, 300, rowFont); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); });
-    y += gk('inc'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Total Income:', R - 150, y, { align: 'right' }); doc.text(pdfGbp(c.income), R, y, { align: 'right' });
+    if (c.deposit) { brk(rh, 'Income (continued)'); y += rh; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(pdfGbp(c.deposit), R, y, { align: 'right' }); }
+    (m.credits || []).forEach(function(f){ brk(rh, 'Income (continued)'); y += rh; fit(f.label, X + 70, y, 300, rowFont); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); });
+    brk(gk('inc')); y += gk('inc'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Total Income:', R - 150, y, { align: 'right' }); doc.text(pdfGbp(c.income), R, y, { align: 'right' });
     // Each fee with its own VAT (£0.00 on fees with no VAT), like the office statements.
-    y += gk('exp'); band(y, 'Expenditure', c.vatOn);
+    brk(gk('exp') + gk('band') + rh); y += gk('exp'); band(y, 'Expenditure', c.vatOn);
     y += gk('band'); doc.setFontSize(rowFont);
-    c.fees.forEach(function(f){ doc.text(ukDay(m.from, true), X - 2, y);
+    c.fees.forEach(function(f){ brk(0, 'Expenditure (continued)', c.vatOn); doc.text(ukDay(m.from, true), X - 2, y);
       var lw = c.vatOn ? (VX - 48) - (X + 48) : (R - 80) - (X + 48), iv = f.invoice_id && stmtInv[f.invoice_id];
       // An invoice: clicking it opens the invoice.
       // Every row the same size: a long one ends at a whole word with "…" rather than getting smaller.
@@ -19304,14 +19330,18 @@
         doc.link(X + 48, y - rowFont, lwid + vw, rowFont + 3, { url: iv.url }); }
       else fit(stmtInvLabel(f), X + 48, y, lw, rowFont, true); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += rh; });
     if (!c.fees.length) { doc.text(m.bf ? 'No fees this month' : 'No fees', X + 48, y); y += rh; }
+    brk(gk('fees') - rh + (c.vat ? gk('small') : 0) + (m.bf ? gk('small') : 0) + (m.bf_inv || []).length * 12 + gk('total') + gk('closing') + gk('amount') + tail);
     y += gk('fees') - rh; doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
     doc.text('Sub-Total:', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.sub), R, y, { align: 'right' });
     if (c.vat) { y += gk('small'); doc.text('VAT (20%)', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.vat), R, y, { align: 'right' }); }
     // What the landlord still owed from the last statement (VAT was already on it).
     if (m.bf) { y += gk('small'); doc.text('Balance brought forward' + (m.bf_from ? ' (' + monthName(m.bf_from) + ' statement)' : '') + ':', R - 80, y, { align: 'right' }); doc.text(pdfGbp(m.bf), R, y, { align: 'right' }); }
     // The unpaid invoices in that balance, each a link to the invoice.
-    (m.bf_inv || []).forEach(function(i){ var iv = stmtInv[i.id], lbl = 'incl. ' + (iv && iv.what ? iv.what + ' · ' : '') + i.number + ' ' + pdfGbp(i.total);
+    (m.bf_inv || []).forEach(function(i){ var iv = stmtInv[i.id], rest = i.number + ' ' + pdfGbp(i.total), lbl = 'incl. ' + (iv && iv.what ? iv.what + ' · ' : '') + rest;
       y += 12; doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(23, 92, 211);
+      // Must stay inside the page: a long "what" ends at a whole word with "…" (the number and amount always show).
+      var room2 = R - 80 - X - doc.getTextWidth('incl.  · ' + rest + (iv && iv.url ? '  view \u203a' : ''));
+      if (iv && iv.what && doc.getTextWidth(lbl + (iv.url ? '  view \u203a' : '')) > R - 80 - X) lbl = 'incl. ' + (room2 > 30 ? shorten(String(iv.what), room2) + ' · ' : '') + rest;
       doc.text(lbl + (iv && iv.url ? '  view \u203a' : ''), R - 80, y, { align: 'right' });
       if (iv && iv.url) { var w = doc.getTextWidth(lbl + '  view \u203a'); doc.link(R - 80 - w, y - 8, w, 11, { url: iv.url }); }
       doc.setTextColor(20); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); });
@@ -19321,11 +19351,7 @@
     y += gk('amount'); doc.text(owes ? 'AMOUNT DUE FROM LANDLORD' : 'PAYMENT AMOUNT', X - 2, y); doc.text(pdfGbp(Math.abs(c.balance)), R, y, { align: 'right' });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(owes ? 'Please pay by bank transfer within 7 days, or it will be taken from next month\'s rent' : 'Paid to you by bank transfer', X - 2, y + 14);
     if (bank) doc.text('Bank: ' + cfg.payee + ', sort code ' + cfg.sortCode + ', account ' + cfg.accountNumber + ', reference ' + (payRef(d.address) || ''), X - 2, y + 28);
-    doc.setFontSize(6.5); doc.setTextColor(200, 16, 30); doc.setFont('helvetica', 'bold'); doc.text('Residential Realtors', X - 2, fy);
-    doc.setTextColor(40); doc.setFont('helvetica', 'normal');
-    doc.text('Trading name of Estallion Investments Limited', X - 2, fy + 12);
-    doc.text('Head office and registered office: Residential Realtors, ' + (cfg.address || '28-30 Harper Road, London, SE1 6AD'), X - 2, fy + 24);
-    doc.text('Registered in England No. ' + (cfg.companyNo || '') + '. VAT No. ' + (cfg.vatNo || '') + '.', X - 2, fy + 36);
+    foot();
     return doc;
   }
   // Banking trail, laid out like the agency's spreadsheet (pink headers).
