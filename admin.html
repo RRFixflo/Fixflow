@@ -15089,7 +15089,7 @@
     }).join('');
   }
   function loadSent(){
-    var q = $('sentQ').value.trim(), who = $('sentWho').value; if (!q && !who) { loadMailUse(); loadMySender(); }
+    var q = $('sentQ').value.trim(), who = $('sentWho').value; if (!q && !who) loadMailUse();
     return api('GET', '/api/admin/sent-emails?q=' + encodeURIComponent(q) + (who ? '&who=' + encodeURIComponent(who) : '')).then(function(d){
       if (!d || !d.ok) { $('sentList').innerHTML = '<p class="muted-note">Couldn’t load the sent emails.</p>'; return; }
       if (d.all && !sentWhoSet) { sentWhoSet = true; $('sentWho').hidden = false; $('sentWho').innerHTML = '<option value="">Everyone</option>' + d.people.map(function(p){ return '<option value="' + esc(p.user_name || '') + '">' + esc(p.user_name || 'Office') + ' (' + p.n + ')</option>'; }).join(''); }
