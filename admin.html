@@ -591,6 +591,13 @@
   .pv-editbox { margin: 8px 0 12px; padding: 12px; border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 12px; }
   @media (max-width: 640px) { .off-kind, .off-pvr { grid-template-columns: 1fr; } }
   .sent-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+  #leadPop { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 9000; width: min(460px, calc(100vw - 24px)); background: var(--dk-bg-fff, #fff); border: 3px solid var(--dk-fg-067647, #067647); border-radius: 16px; box-shadow: 0 18px 50px rgba(16,24,40,.35); padding: 12px 14px; animation: lpIn .35s ease-out; }
+  #leadPop .lp-h { font-weight: 800; font-size: 17px; color: var(--dk-fg-067647, #067647); margin-bottom: 6px; }
+  #leadPop .lp-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--dk-bd-e6e8ec, #e6e8ec); }
+  #leadPop .lp-t { min-width: 0; } #leadPop .lp-t b { display: block; } #leadPop .lp-t span { display: block; font-size: 13px; color: var(--dk-fg-667085, #667085); overflow-wrap: anywhere; }
+  #leadPop .lp-f { display: flex; gap: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  @keyframes lpIn { from { opacity: 0; transform: translate(-50%, -20px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  @media (prefers-reduced-motion: reduce) { #leadPop { animation: none; } }
   .mu-top { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 8px 0; }
   .mu-tile { border: 1px solid var(--dk-bd-e6e8ec, #e6e8ec); border-radius: 12px; padding: 10px 12px; }
   .mu-tile b { font-size: 22px; display: block; } .mu-tile small { color: var(--dk-fg-667085, #667085); }
@@ -9639,7 +9646,10 @@
       var nNeed = crm.items.filter(function(x){ return !isAppl(x) && crmNeed(x); }).length, nAppl = applGroups(crm.items.filter(function(x){ return isAppl(x) && !x.archived; })).filter(applFresh).length;
       // A new lead while Fixflow is open: say so.
       var mxA = crm.items.reduce(function(m, x){ return isAppl(x) && x.id > m ? x.id : m; }, 0);
-      if (crm.maxAppl && mxA > crm.maxAppl) { var nw = crm.items.filter(function(x){ return isAppl(x) && x.id > crm.maxAppl && !x.archived; }); if (nw.length) toast('🆕 New lead' + (nw.length > 1 ? 's: ' + nw.length + ' — newest ' + nw[0].name : ': ' + nw[0].name + (nw[0].address ? ' — ' + shortAddr(nw[0].address) : '')) + ' · ' + fmtWhen(nw[0].at)); }
+      // A new lead (applicant or landlord enquiry) while Fixflow is open: a pop-up that stays, a chime, a desktop alert, a flashing tab.
+      var mxAll = crm.items.reduce(function(m, x){ return x.type !== 'sub' && x.id > m ? x.id : m; }, 0);
+      if (crm.maxAll) { var nw = crm.items.filter(function(x){ return x.type !== 'sub' && x.id > crm.maxAll && !x.archived && !x.junk; }); if (nw.length) leadAlert(nw); }
+      crm.maxAll = mxAll;
       crm.maxAppl = mxA;
       $('sCrm').hidden = !nNeed; $('sCrm').textContent = nNeed; $('stCrmN').hidden = !nNeed; $('stCrmN').textContent = nNeed;
       $('sLeads').hidden = !nAppl; $('sLeads').textContent = nAppl; $('stApplN').hidden = !nAppl; $('stApplN').textContent = nAppl;
@@ -9654,7 +9664,7 @@
   // the full list reloads only when there's a new lead or note.
   var crmLatest = null;
   function crmCheckNew(){
-    if (!meta.db || $('appView').hidden || document.visibilityState !== 'visible') return;
+    if (!meta.db || $('appView').hidden) return;   // also while Fixflow is behind other windows, so the alert still comes
     api('GET', '/api/admin/crm/latest').then(function(d){
       if (!d || !d.ok) return; var k = d.lead + ':' + d.note;
       if (crmLatest !== null && k !== crmLatest) loadCrm('poll');
@@ -9662,6 +9672,48 @@
     });
   }
   setInterval(crmCheckNew, 10000);
+  // New-lead alert: stays on screen until someone presses Open or Got it (a toast was easy to miss), plays a short
+  // chime, shows a desktop notification when allowed (seen even with Fixflow behind Outlook) and flashes the tab title.
+  var leadQ = [], leadTitle = null, leadFlash = null, leadAudio = null;
+  function leadChime(){
+    try {
+      var C = window.AudioContext || window.webkitAudioContext; if (!C) return; leadAudio = leadAudio || new C();
+      [[880, 0], [1175, 0.18], [1568, 0.36]].forEach(function(n){ var o = leadAudio.createOscillator(), g = leadAudio.createGain(), t = leadAudio.currentTime + n[1];
+        o.type = 'sine'; o.frequency.value = n[0]; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+        o.connect(g); g.connect(leadAudio.destination); o.start(t); o.stop(t + 0.4); });
+    } catch (e) {}
+  }
+  function leadLine(x){ return (x.name || 'No name') + (x.address ? ' — ' + shortAddr(x.address) : ''); }
+  function leadAlert(list){
+    list.forEach(function(x){ if (!leadQ.some(function(y){ return y.ref === x.ref; })) leadQ.unshift(x); });
+    leadQ = leadQ.slice(0, 6); leadDraw(); leadChime();
+    try { if ('Notification' in window && Notification.permission === 'granted') list.slice(0, 3).forEach(function(x){
+      var n = new Notification('🆕 New ' + (isAppl(x) ? 'lead' : 'landlord enquiry') + ' — Fixflow', { body: leadLine(x), tag: 'lead-' + x.ref, requireInteraction: true });
+      n.onclick = function(){ window.focus(); leadOpen(x); n.close(); };
+    }); } catch (e) {}
+    if (!leadFlash) { leadTitle = document.title; var on = false; leadFlash = setInterval(function(){ on = !on; document.title = on ? '🆕 New lead (' + leadQ.length + ')' : leadTitle; }, 1000); }
+  }
+  function leadStopFlash(){ if (leadFlash) { clearInterval(leadFlash); leadFlash = null; document.title = leadTitle; } }
+  function leadDraw(){
+    var box = $('leadPop'); if (!box) { box = document.createElement('div'); box.id = 'leadPop'; box.setAttribute('role', 'alert'); document.body.appendChild(box); }
+    if (!leadQ.length) { box.hidden = true; leadStopFlash(); return; }
+    box.hidden = false;
+    box.innerHTML = '<div class="lp-h">🆕 ' + (leadQ.length === 1 ? 'New lead just came in' : leadQ.length + ' new leads just came in') + '</div>' +
+      leadQ.map(function(x, i){ var src = x.type === 'rm' ? 'Rightmove' : x.type === 'viewing' ? 'Website viewing request' : x.type === 'call' ? 'Phone message' : isAppl(x) ? 'Applicant' : 'Landlord enquiry';
+        return '<div class="lp-row"><div class="lp-t"><b>' + esc(x.name || 'No name') + '</b><span>' + esc(src + (x.address ? ' · ' + shortAddr(x.address) : '') + (x.phone ? ' · ' + x.phone : '')) + '</span></div><button type="button" class="btn small primary" data-lp-open="' + i + '">Open</button></div>'; }).join('') +
+      '<div class="lp-f">' + ('Notification' in window && Notification.permission === 'default' ? '<button type="button" class="btn small" data-lp-perm>🔔 Also alert me when Fixflow is in the background</button>' : '<span></span>') + '<button type="button" class="btn small ghost" data-lp-ok>Got it</button></div>';
+  }
+  function leadOpen(x){
+    leadQ = leadQ.filter(function(y){ return y.ref !== x.ref; }); leadDraw();
+    showView(isAppl(x) ? 'appl' : 'crm'); $('crmQ').value = x.phone || x.email || x.name || ''; $('crmQ').dispatchEvent(new Event('input'));
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('#leadPop button'); if (!b) return;
+    if (b.hasAttribute('data-lp-open')) { var x = leadQ[+b.dataset.lpOpen]; if (x) leadOpen(x); }
+    else if (b.hasAttribute('data-lp-ok')) { leadQ = []; leadDraw(); }
+    else if (b.hasAttribute('data-lp-perm')) { try { Notification.requestPermission().then(function(){ leadDraw(); }); } catch (e) {} }
+  });
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && !leadQ.length) leadStopFlash(); });
   document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') { if (crmLatest === null) crmCheckNew(); else { crmLatest = null; crmCheckNew(); loadCrm('poll'); } } });
   function fmtWhen(d){ return d ? new Date(d).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; }
   // Applicants (the Leads page): viewing requests, Rightmove and portal leads, people looking to rent or buy.
