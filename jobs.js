@@ -7684,6 +7684,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
           AND ($2::date IS NULL OR pt.created_at >= $2::date - interval '60 days') ORDER BY pt.created_at`, [key, /^\d{4}-\d{2}-\d{2}$/.test(start) ? start : null])).rows;
       rows.forEach(function (r) { add(r.email, r.name); });
     }
+    // Tenants saved under the same home written differently (loose match), when the exact address found nobody with an email.
+    const addr = d.address || t.address || '';
+    if (!out.length && addr) {
+      const rows = (await p.query(`SELECT tn.name, tn.email, pt.address FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
+        WHERE pt.moved_out_at IS NULL AND tn.deleted_at IS NULL AND coalesce(pt.role, '') <> 'guarantor' AND coalesce(tn.email, '') <> ''
+          AND ($1::date IS NULL OR pt.created_at >= $1::date - interval '60 days') ORDER BY pt.created_at`, [/^\d{4}-\d{2}-\d{2}$/.test(start) ? start : null]).catch(function () { return { rows: [] }; })).rows;
+      rows.forEach(function (r) { if (sameHomeLoose(r.address, addr)) add(r.email, r.name); });
+    }
     return out;
   }
   // Resend an email from a tenancy's History: the same attachments (the copies kept when it was sent),
@@ -11114,12 +11122,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date, id')).rows;
     // Tenants saved at the property (Tenants page) count too, as the reminder itself goes to them (tenancyTenants) —
     // so a tenancy whose tenants' emails are only on their tenant records doesn't say "no tenant email".
-    const ptMail = {};
-    (await p.query(`SELECT pt.property_key AS k, pt.created_at AS at FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
+    const ptMail = {}, ptAll = [];
+    (await p.query(`SELECT pt.property_key AS k, pt.address AS a, pt.created_at AS at FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
       WHERE pt.moved_out_at IS NULL AND tn.deleted_at IS NULL AND coalesce(pt.role, '') <> 'guarantor' AND tn.email ~ '^[^[:space:]@<>,;]+@[^[:space:]@<>,;]+\\.[^[:space:]@<>,;]+$'`).catch(function () { return { rows: [] }; })).rows
-      .forEach(function (r) { (ptMail[r.k] = ptMail[r.k] || []).push(new Date(r.at).getTime()); });
-    const ptHas = function (t) { const d = t.data || {}, key = t.property_key || propKey(d.address || t.address || ''), st = Date.parse(String(d.start_date || t.start_date || '').slice(0, 10));
-      return (ptMail[key] || []).some(function (at) { return !st || at >= st - 60 * 86400000; }); };
+      .forEach(function (r) { (ptMail[r.k] = ptMail[r.k] || []).push(new Date(r.at).getTime()); if (r.a) ptAll.push({ a: r.a, at: new Date(r.at).getTime() }); });
+    // Same home with the address written differently (e.g. "Flat 6 Keston House" vs "6 Keston House, …") counts too.
+    const ptHas = function (t) { const d = t.data || {}, addr = d.address || t.address || '', key = t.property_key || propKey(addr), st = Date.parse(String(d.start_date || t.start_date || '').slice(0, 10));
+      const okAt = function (at) { return !st || at >= st - 60 * 86400000; };
+      return (ptMail[key] || []).some(okAt) || (!!addr && ptAll.some(function (r) { return okAt(r.at) && sameHomeLoose(r.a, addr); })); };
     const lls = {}; (await p.query('SELECT pl.property_key, l.id, l.name, l.email, l.pay_to FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
     const items = [], feeList = [], feesPre = { amount: 0, net: 0, once: 0, once_net: 0 }; let notOurs = 0, feesAll = 0, feesN = 0, feesNnet = 0;
     // On this month's page, tomorrow's rents too (even when tomorrow is next month).
@@ -11263,7 +11273,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       (await p.query('SELECT id, address, data FROM tenancies WHERE start_date IS NULL')).rows.forEach(function (t) { const d = t.data || {}; skipped.push({ tenancy_id: t.id, address: d.address || t.address, service: d.service || '', rent: Number(d.rent_pcm) || 0, tenants: (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean), why: 'no-start' }); });
       const haveT = {}; tcys.forEach(function (t) { if (t.property_key) haveT[t.property_key] = 1; });
       (await p.query('SELECT DISTINCT ON (pt.property_key) pt.property_key, pt.address, t.name FROM property_tenants pt LEFT JOIN tenants t ON t.id = pt.tenant_id WHERE pt.moved_out_at IS NULL AND pt.property_key IS NOT NULL ORDER BY pt.property_key')).rows
-        .forEach(function (r) { if (!haveT[r.property_key]) skipped.push({ tenancy_id: null, address: r.address, property_key: r.property_key, tenants: r.name ? [r.name] : [], why: 'no-tenancy' }); });
+        .forEach(function (r) { if (!haveT[r.property_key] && !(r.address && tcys.some(function (t) { return sameHomeLoose(r.address, (t.data || {}).address || t.address || ''); }))) skipped.push({ tenancy_id: null, address: r.address, property_key: r.property_key, tenants: r.name ? [r.name] : [], why: 'no-tenancy' }); });
     }
     // Holding deposits received on offers: to refund by default; once the offer is accepted they go
     // towards the rent + deposit (and leave this list when the tenancy is made from the offer).
