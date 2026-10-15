@@ -104,7 +104,7 @@ The owner is not a developer: explain results in plain, non-technical English, b
 ## How to work
 
 1. Make the change; keep the style of the surrounding code (plain ES5-style JS in the browser, no frameworks or build step).
-2. Test locally and with Playwright at desktop (1280) and phone (390, sometimes 360) widths: check for JS errors and horizontal overflow, and look at screenshots.
+2. Test locally and with Playwright at desktop (1280) and phone (390 **and** 360) widths: check for JS errors and horizontal overflow, and look at screenshots. **Every change must work on a mobile phone — the owner and staff use Fixflow on their phones (the owner asked: “everything you do, make sure it's compatible for mobile phone”).** Check on the phone screenshots that every new button, badge or line of text fits inside its card (rows of buttons wrap — `flex-wrap` — never run off the edge or get cut off), tap targets are big enough, windows scroll, and nothing is hidden behind the bottom tab bar. A new `<button>` styled like a link or chip needs `background`/`font` set so phones don't show a grey default box.
 3. `node --check` any edited `.js` file.
 4. Commit with a clear message, push the working branch, open a PR, squash-merge it, then reset the working branch to the new `main`.
 5. Tell the user what changed in plain English and anything they need to do.
