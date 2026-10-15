@@ -2603,9 +2603,9 @@
 <!-- NEW JOB: ASSIGN A CONTRACTOR -->
 <div class="modal" id="njModal" hidden>
   <div class="card" style="width:min(520px,100%);display:flex;flex-direction:column;gap:10px">
-    <h3 style="margin:0">🛠 New job — assign a contractor</h3>
+    <h3 style="margin:0">🛠 New job — who will do it?</h3>
     <div id="njBody"></div>
-    <label class="lbl" for="njWho" style="margin:0">Contractor</label>
+    <label class="lbl" for="njWho" style="margin:0">Contractor, or the landlord</label>
     <select class="inp" id="njWho"></select>
     <p class="muted-note" id="njMore" style="margin:0"></p>
     <div class="row-actions" style="margin-top:4px;flex-wrap:wrap">
@@ -3686,7 +3686,9 @@
   // contractor chosen before for that kind of job). "Later" asks again in 2 hours; one job at a time.
   var njCur = null;
   function njSnoozed(){ try { return JSON.parse(localStorage.getItem('rr_nj_later') || '{}'); } catch (e) { return {}; } }
+  var njQuiet = 0;   // after one is dealt with, the next prompt waits so it doesn't cover the job or the messages that follow
   function newJobPrompt(){
+    if (Date.now() < njQuiet) return;
     if (staffMode || !$('njModal') || !$('njModal').hidden || openJobId || document.querySelector('.modal:not([hidden])')) return;
     var later = njSnoozed(), now = Date.now(), weekAgo = now - 7 * 864e5;
     var j = jobs.filter(function(x){ return (x.status === 'New' || !x.status) && !String(x.assigned_to || '').trim() && !x.landlord_handles && new Date(x.created_at).getTime() > weekAgo && !(later[x.id] > now); })
@@ -3697,15 +3699,33 @@
     var sug = learnedContractor({ category: j.category }) || contractorForJob({ category: j.category, title: j.affected || '', description: j.description || '' }, []);
     $('njBody').innerHTML = '<div style="font-weight:700">' + esc(j.ref || '') + ' · ' + esc(jobWhat(j, 60)) + '</div>' +
       '<div class="muted-note" style="margin:2px 0 0">' + esc(j.property_address || '') + ' · ' + esc(j.urgency || 'Routine') + ' · reported ' + esc(fmtShort(j.created_at)) + '</div>';
-    $('njWho').innerHTML = '<option value="">Choose a contractor…</option>' + pool.map(function(c){ return '<option value="' + esc(c.name) + '"' + (sug && sug.id === c.id ? ' selected' : '') + '>' + esc(c.name) + (c.trade ? ' — ' + esc(c.trade) : '') + '</option>'; }).join('');
+    $('njWho').innerHTML = '<option value="">Choose a contractor…</option><optgroup label="The landlord deals with it"><option value="@ll:self">🏠 Landlord will do it themselves</option><option value="@ll:contractor">🏠 Landlord’s own contractor</option></optgroup><optgroup label="Our contractors">' + pool.map(function(c){ return '<option value="' + esc(c.name) + '"' + (sug && sug.id === c.id ? ' selected' : '') + '>' + esc(c.name) + (c.trade ? ' — ' + esc(c.trade) : '') + '</option>'; }).join('') + '</optgroup>';
     $('njMore').textContent = sug ? 'Suggested: ' + sug.name + (sug.trade ? ' (' + sug.trade + ')' : '') + '. After assigning, the job opens so you can book and message them.' : 'After assigning, the job opens so you can book and message them.';
+    $('njGo').textContent = 'Assign';
     $('njModal').hidden = false;
   }
+  $('njWho').addEventListener('change', function(){ $('njGo').textContent = /^@ll:/.test(this.value) ? 'Hand to the landlord' : 'Assign'; });
   $('njLater').addEventListener('click', function(){ if (njCur) { var l = njSnoozed(); l[njCur.id] = Date.now() + 2 * 36e5; try { localStorage.setItem('rr_nj_later', JSON.stringify(l)); } catch (e) {} } $('njModal').hidden = true; });
-  $('njOpen').addEventListener('click', function(){ $('njModal').hidden = true; if (njCur) openJob(njCur.id); });
+  $('njOpen').addEventListener('click', function(){ njQuiet = Date.now() + 90000; $('njModal').hidden = true; if (njCur) openJob(njCur.id); });
   $('njGo').addEventListener('click', function(){
     var who = $('njWho').value, j = njCur; if (!j) return;
+    if (who) njQuiet = Date.now() + 90000;
     if (!who) { toast('Choose a contractor'); $('njWho').focus(); return; }
+    // The landlord deals with it (themselves or their own contractor): set "Done by" as the job page does, then offer
+    // the message to the landlord (with the tenant's contact) or the tenant.
+    var llH = (/^@ll:(self|contractor)$/.exec(who) || [])[1];
+    if (llH) {
+      busy($('njGo'), true, 'Saving…');
+      api('PATCH', '/api/admin/jobs/' + j.id, { landlord_handles: llH, assigned_to: '' }).then(function(r){
+        busy($('njGo'), false);
+        if (!r || !r.ok) { toast('Couldn’t save — open the job instead'); return; }
+        $('njModal').hidden = true; toast('✓ ' + (j.ref || 'Job') + ' handed to ' + (llH === 'self' ? 'the landlord' : 'the landlord’s contractor'));
+        loadJobs().then(function(){ openJob(j.id);
+          setTimeout(function(){ var nj = Object.assign({}, j, { landlord_handles: llH, assigned_to: '' });
+            if (llContact(nj)) openLandlordNotice([nj]); else openTenantNotice([nj], llH === 'self' ? 'your landlord' : 'your landlord’s contractor'); }, 700); });
+      });
+      return;
+    }
     busy($('njGo'), true, 'Assigning…');
     api('PATCH', '/api/admin/jobs/' + j.id, { assigned_to: who, status: 'Assigned' }).then(function(r){
       busy($('njGo'), false);
