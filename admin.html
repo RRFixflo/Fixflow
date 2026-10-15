@@ -6740,7 +6740,8 @@
     text(o.title, M, 20, 'bold', INK);
     text(o.address, M, 11.5, 'normal', INK);
     text(o.subtitle + ' · Prepared ' + new Date().toLocaleDateString('en-GB', { timeZone: TZ, day: 'numeric', month: 'long', year: 'numeric' }), M, 9, 'normal', SOFT);
-    y += 6;
+    // With no summary box the first job's divider follows straight on: leave room so it clears the subtitle.
+    y += o.summary ? 6 : 14;
     // Summary
     if (o.summary) {
       doc.setDrawColor.apply(doc, LINE); doc.setFillColor(247, 248, 250);
@@ -7202,23 +7203,30 @@
     if (cfg.address) t(cfg.address, W - M, 92, 8.5, 'normal', SOFT, 'right');
     if (reg) t(reg, W - M, 104, 8.5, 'normal', SOFT, 'right');
     // Meta
-    y = 136;
+    y = 136; var metaEnd = 0;
     (v.quote ? [['Quote number', v.number], ['Date', ukDate(v.date)], ['Valid until', v.due ? ukDate(v.due) : '—'], ['Reference', j.ref || '—']] : [['Invoice number', v.number], ['Invoice date', ukDate(v.date)], ['Payment due', ukDate(v.due)], ['Job reference', j.ref]]).forEach(function(r, i){
-      var x = M + i * ((W - M * 2) / 4);
+      var x = M + i * ((W - M * 2) / 4), cw = (W - M * 2) / 4 - 8, val = pdfSafe(r[1] == null ? '' : r[1]), fs = 10.5;
       t(r[0].toUpperCase(), x, y, 7.5, 'normal', SOFT);
-      t(r[1], x, y + 15, 10.5, 'bold');
+      // Too wide for its cell: a little smaller, then onto a second line — never into the next cell.
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(fs);
+      while (doc.getTextWidth(val) > cw && fs > 8.5) { fs -= 0.5; doc.setFontSize(fs); }
+      doc.splitTextToSize(val, cw).forEach(function(line, k){ t(line, x, y + 15 + k * 11, fs, 'bold'); metaEnd = Math.max(metaEnd, y + 15 + k * 11); });
     });
     // Bill to / property
-    y = 188;
+    y = Math.max(188, metaEnd + 26);
     t(v.quote ? 'PREPARED FOR' : 'BILL TO', M, y, 7.5, 'normal', SOFT);
-    t(v.landlord || 'The landlord', M, y + 16, 11, 'bold');
-    var by = y + 30;
+    // A long name wraps within its half, and the lines under it move down.
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    var nmL = doc.splitTextToSize(pdfSafe(v.landlord || 'The landlord'), W / 2 - M - 12);
+    nmL.forEach(function(line, k){ t(line, M, y + 16 + k * 13, 11, 'bold'); });
+    var by = y + 30 + (nmL.length - 1) * 13;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, INK);
     if (v.landlordAddress) {
       var al = doc.splitTextToSize(pdfSafe(v.landlordAddress.replace(/\s*\n\s*/g, '\n')), W / 2 - M - 12);
       doc.text(al, M, by); by += al.length * 12;
     }
-    [v.landlordEmail, v.landlordPhone].filter(Boolean).forEach(function(c){ t(c, M, by, 9, 'normal', SOFT); by += 12; });
+    [v.landlordEmail, v.landlordPhone].filter(Boolean).forEach(function(c){ doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+      doc.splitTextToSize(pdfSafe(c), W / 2 - M - 12).forEach(function(line){ t(line, M, by, 9, 'normal', SOFT); by += 12; }); });
     t('PROPERTY', W / 2, y, 7.5, 'normal', SOFT);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor.apply(doc, INK);
     var pl = doc.splitTextToSize(pdfSafe(j.property_address || ''), W / 2 - M);
@@ -7243,12 +7251,24 @@
     // Totals
     y += 16;
     function totalRow(label, val, bold){
-      t(label, W - M - 150, y, bold ? 11 : 9.5, bold ? 'bold' : 'normal', bold ? INK : SOFT);
+      // The label sits left of the amount however wide the amount is.
+      doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(bold ? 13 : 10); var vw = doc.getTextWidth(pdfSafe(val));
+      doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(bold ? 11 : 9.5); var lw = doc.getTextWidth(pdfSafe(label));
+      t(label, Math.min(W - M - 150, W - M - 10 - vw - 12 - lw), y, bold ? 11 : 9.5, bold ? 'bold' : 'normal', bold ? INK : SOFT);
       t(val, W - M - 10, y, bold ? 13 : 10, bold ? 'bold' : 'normal', INK, 'right');
       y += bold ? 22 : 16;
     }
     if (v.vat) { totalRow('Subtotal', gbp(v.sub)); totalRow('VAT (20%)', gbp(v.vat)); }
     totalRow(v.quote ? (v.vat ? 'Total inc. VAT' : 'Total') : 'Total due', gbp(v.total), true);
+    // Footer: if the two halves would meet, the right-hand one drops to a line of its own.
+    function invFoot(){
+      var ft = [cfg.from || 'Residential Realtors', cfg.address].filter(Boolean).join(' · '), fr = [reg, v.number].filter(Boolean).join(' · ');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      var low = doc.getTextWidth(pdfSafe(ft)) + doc.getTextWidth(pdfSafe(fr)) + 16 > W - M * 2;
+      doc.setDrawColor.apply(doc, LINE); doc.line(M, H - 44, W - M, H - 44);
+      t(ft, M, H - 28, 8, 'normal', SOFT);
+      t(fr, W - M, low ? H - 17 : H - 28, 8, 'normal', SOFT, 'right');
+    }
     if (v.quote) {
       // A quote: the notes and how to accept, instead of payment details.
       y += 10;
@@ -7257,9 +7277,7 @@
         var nl = doc.splitTextToSize(pdfSafe(v.notes), W - M * 2); nl.forEach(function(line){ if (y > H - 70) { doc.addPage(); y = M; } doc.text(line, M, y); y += 13; }); y += 8; }
       if (y > H - 90) { doc.addPage(); y = M; }
       t('To accept this quote, use the link we sent you or call us on 0207 096 8131.' + (v.due ? ' Valid until ' + ukDate(v.due) + '.' : ''), M, y + 6, 9, 'normal', SOFT);
-      doc.setDrawColor.apply(doc, LINE); doc.line(M, H - 44, W - M, H - 44);
-      t([cfg.from || 'Residential Realtors', cfg.address].filter(Boolean).join(' · '), M, H - 28, 8, 'normal', SOFT);
-      t([reg, v.number].filter(Boolean).join(' · '), W - M, H - 28, 8, 'normal', SOFT, 'right');
+      invFoot();
       return doc;
     }
     // Payment details
@@ -7275,9 +7293,7 @@
     });
     y += 128;
     t('Please use the payment reference above so we can match your payment. Thank you.', M, y, 9, 'normal', SOFT);
-    doc.setDrawColor.apply(doc, LINE); doc.line(M, H - 44, W - M, H - 44);
-    t([cfg.from || 'Residential Realtors', cfg.address].filter(Boolean).join(' · '), M, H - 28, 8, 'normal', SOFT);
-    t([reg, v.number].filter(Boolean).join(' · '), W - M, H - 28, 8, 'normal', SOFT, 'right');
+    invFoot();
     return doc;
   }
 
@@ -10793,16 +10809,18 @@
     var y = 140; doc.setFontSize(10);
     [l.name].concat(String(l.address || '').split(/\n|,\s*/)).filter(Boolean).forEach(function(line){ doc.text(line, X, y); y += 13; });
     y = Math.max(y + 14, 206); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('LANDLORD ACCOUNT STATEMENT', W / 2, y, { align: 'center' });
-    if (laCur.prop) { y += 15; doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(doc.splitTextToSize(laCur.prop, W - 120)[0], W / 2, y, { align: 'center' }); }
+    if (laCur.prop) { y += 15; doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.splitTextToSize(laCur.prop, W - 120).forEach(function(pl, k){ if (k) y += 12; doc.text(pl, W / 2, y, { align: 'center' }); }); }
     y += 16; doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
     doc.text((st.from ? ukDay(st.from) : 'From the start') + '  –  ' + ukDay(st.to) + '     ·     Printed ' + ukDay(todayIso()), W / 2, y, { align: 'center' });
     var head = function(){ y += 22; doc.setFillColor(11, 31, 58); doc.rect(X - 4, y - 11, R - X + 8, 16, 'F'); doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
       doc.text('Date', X, y); doc.text('Details', X + 62, y); doc.text('In', cIn, y, { align: 'right' }); doc.text('Out', cOut, y, { align: 'right' }); doc.text('Balance', cBal, y, { align: 'right' });
       doc.setTextColor(20); doc.setFont('helvetica', 'normal'); y += 6; };
     var line = function(date, what, vin, vout, bal, bold, url){
+      // Measured in the type it's drawn in, so the wrapped lines really fit the column.
+      doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(8.8);
       var parts = doc.splitTextToSize(String(what || ''), wW - (url ? 60 : 0));
-      if (y + 13 * parts.length > H - 60) { doc.addPage(); y = 40; head(); }
-      y += 13; doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(8.8);
+      if (y + 13 * parts.length > H - 60) { doc.addPage(); y = 40; head(); doc.setFont('helvetica', bold ? 'bold' : 'normal'); }
+      y += 13; doc.setFontSize(8.8);
       doc.text(date || '', X, y); doc.text(parts, X + 62, y);
       // An invoice: a small blue "view & download ›" after it, and the line opens the landlord's invoice page.
       if (url) { var tw = doc.getTextWidth(parts[0] || ''); doc.setFontSize(7.6); doc.setTextColor(23, 92, 211); doc.text('view & download \u203a', X + 62 + tw + 6, y); doc.setTextColor(20); doc.setFontSize(8.8); doc.link(X + 62, y - 9, tw + 80, 12, { url: url }); }
@@ -17275,9 +17293,11 @@
       var ref = build(keep), lw = (keep[keep.length - 1] || '').toLowerCase();
       if (ref.length > 18 && keep.length > 1 && ABBR[lw]) ref = build(keep.slice(0, -1).concat(ABBR[lw]));
       if (ref.length > 18 && keep.length > 1 && REF_WORDS.test(keep[keep.length - 1])) ref = build(keep.slice(0, -1));
-      return ref;
+      // Still too long (a very long building name): leave words off the end, and only as a last resort cut it — never over 18.
+      for (var kk = keep.length - 1; ref.length > 18 && kk >= 1; kk--) ref = build(keep.slice(0, kk));
+      return ref.slice(0, 18).replace(/-$/, '');
     }
-    return (parts[0] || '').replace(/[^A-Za-z0-9-]/g, '');
+    return (parts[0] || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 18);
   }
   function feeText(v, unit){ var x = num(v) || 0; return unit === 'gbp' ? gbp(x) + ' pm' : x + '%'; }
   function tcyNames(list){ return (list || []).map(function(p){ return p.name; }).filter(Boolean); }
@@ -19202,20 +19222,23 @@
     doc.setFont('helvetica', 'normal'); doc.setFontSize(15); doc.text('Terms of Let', W / 2 - 40, 70);
     doc.setLineWidth(0.8); doc.line(W / 2 - 40, 73, W / 2 - 40 + doc.getTextWidth('Terms of Let'), 73);
     doc.setFontSize(9.5); doc.setLineWidth(0.6);
+    // A value too long for its box wraps onto more lines and the box grows; returns the row's height.
     var row = function(y, label, value, vw, center){
-      doc.setFillColor(217, 217, 217); doc.rect(X, y, LW, 15, 'FD'); doc.rect(X + LW, y, vw || VW, 15, 'S');
+      vw = vw || VW; var lines = doc.splitTextToSize(String(value == null ? '' : value), vw - 6); if (!lines.length) lines = [''];
+      var h = 15 + (lines.length - 1) * 11;
+      doc.setFillColor(217, 217, 217); doc.rect(X, y, LW, h, 'FD'); doc.rect(X + LW, y, vw, h, 'S');
       doc.setTextColor(40); doc.text(label, X + 3, y + 11);
-      var val = String(value == null ? '' : value);
-      if (center) doc.text(val, X + LW + (vw || VW) / 2, y + 11, { align: 'center' }); else doc.text(doc.splitTextToSize(val, (vw || VW) - 6)[0] || '', X + LW + 3, y + 11);
+      lines.forEach(function(t, k){ if (center) doc.text(t, X + LW + vw / 2, y + 11 + k * 11, { align: 'center' }); else doc.text(t, X + LW + 3, y + 11 + k * 11); });
+      return h;
     };
     var y = 100;
-    row(y, 'Negotiator Name', d.negotiator, 90); y += 30;
-    row(y, 'Property Full Address', d.address, 340); y += 32;
+    y += row(y, 'Negotiator Name', d.negotiator, Math.max(90, Math.min(340, doc.getTextWidth(String(d.negotiator || '')) + 8))) + 15;
+    y += row(y, 'Property Full Address', d.address, 340) + 17;
     var top = y;
     [['Service Required', d.service], ['Tenant Find Fee', feeText(d.find_pct, d.find_unit) + (d.find_basis === 'upfront' ? ' (up front)' : '')], ['Rent Collections', feeText(d.collect_pct, d.collect_unit)], ['Management Fee', feeText(d.manage_pct, d.manage_unit) + (d.manage_basis === 'upfront' && num(d.manage_pct) ? ' (up front)' : '')],
      ['Rent agreed per week', gbp(c.weekly)], ['Holding Deposit', gbp(c.holding)], ['Holding Deposit Paid', ukDay(d.holding_date)], ['Date Taken', ukDay(d.date_taken)], ['Tenancy Term', String(c.term)],
      ['Break Clause', String(num(d.break_months) || 0)], ['Tenancy Start Date', ukDay(d.start_date)], ['Registering Deposit', d.deposit_by === 'landlord' ? 'Landlord' : 'Agent']]
-      .forEach(function(r){ row(y, r[0], r[1], 124, true); y += 15; });
+      .forEach(function(r){ y += row(y, r[0], r[1], 124, true); });
     // Right-hand boxes
     var bx = X + LW + 124 + 70;
     var box = function(yy, label, value, shade){
@@ -19227,12 +19250,12 @@
     box(top + 120, 'Total', gbp(c.total)); box(top + 135, 'Amount Remaining', gbp(c.remaining));
     y += 22;
     var l = d.landlord || {};
-    [['Landlords Name', l.name], ['First Line Address', l.line1], ['2nd Line Address', l.line2], ['Country', l.country], ['Post Code', l.postcode]].forEach(function(r){ row(y, r[0], r[1], 250); y += 15; });
+    [['Landlords Name', l.name], ['First Line Address', l.line1], ['2nd Line Address', l.line2], ['Country', l.country], ['Post Code', l.postcode]].forEach(function(r){ y += row(y, r[0], r[1], 250); });
     y += 22;
-    tcyNames(d.tenants).forEach(function(nm, i){ row(y, i === 0 ? 'Lead Tenant' : 'Tenant ' + (i + 1), nm, 250); y += 15; });
-    tcyNames(d.guarantors).forEach(function(nm, i){ row(y, 'Guarantor ' + (i + 1), nm, 250); y += 15; });
+    tcyNames(d.tenants).forEach(function(nm, i){ y += row(y, i === 0 ? 'Lead Tenant' : 'Tenant ' + (i + 1), nm, 250); });
+    tcyNames(d.guarantors).forEach(function(nm, i){ y += row(y, 'Guarantor ' + (i + 1), nm, 250); });
     y += 22;
-    [['Move-in Monies Due', ukDay(c.moveInDue)], ['Standing Order Starts', ukDay(c.soStart) + ' (' + c.soPayments + ' payments)'], ['Deposit Scheme', d.deposit_scheme || '']].forEach(function(r){ row(y, r[0], r[1], 250); y += 15; });
+    [['Move-in Monies Due', ukDay(c.moveInDue)], ['Standing Order Starts', ukDay(c.soStart) + ' (' + c.soPayments + ' payments)'], ['Deposit Scheme', d.deposit_scheme || '']].forEach(function(r){ y += row(y, r[0], r[1], 250); });
     return doc;
   }
   // A landlord statement: the move-in one from the tenancy figures, or month m
@@ -19357,15 +19380,19 @@
   // Banking trail, laid out like the agency's spreadsheet (pink headers).
   function bankingPdf(d){
     var doc = pdfDoc(); if (!doc) return null;
-    var c = tcyCalc(d), X = 56, R = doc.internal.pageSize.getWidth() - 56, W = R - X, PINK = [255, 153, 255];
+    var c = tcyCalc(d), X = 56, R = doc.internal.pageSize.getWidth() - 56, W = R - X, PH = doc.internal.pageSize.getHeight(), PINK = [255, 153, 255];
     var box = function(x, y, w, h, fill){ if (fill) { doc.setFillColor(fill[0], fill[1], fill[2]); doc.rect(x, y, w, h, 'FD'); } else doc.rect(x, y, w, h, 'S'); };
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0); doc.setDrawColor(0); doc.setLineWidth(0.7);
     doc.text('Banking Trail', X, 70);
     doc.setFont('helvetica', 'normal');
-    doc.text('Property Address', X, 100); doc.setLineWidth(1.6); box(X + 190, 88, W - 190, 17); doc.setLineWidth(0.7); doc.text(doc.splitTextToSize(d.address || '', W - 196)[0] || '', X + 194, 100);
-    var y = 130; doc.setLineWidth(1.4); box(X, y, 430, 16, PINK); box(X + 430, y, 34, 16); doc.setLineWidth(0.7);
-    doc.text('Weekly Rent', X + 3, y + 12); doc.text(pdfGbp(c.weekly).replace(/\.\d\d$/, ''), X + 461, y + 12, { align: 'right' });
-    y = 162;
+    // A long address wraps and the box grows (everything under it moves down).
+    var aLines = doc.splitTextToSize(d.address || '', W - 196), sh = Math.max(0, aLines.length - 1) * 11.5;
+    doc.text('Property Address', X, 100); doc.setLineWidth(1.6); box(X + 190, 88, W - 190, 17 + sh); doc.setLineWidth(0.7); aLines.forEach(function(t, i){ doc.text(t, X + 194, 100 + i * 11.5); });
+    // The rent box widens to the left for a big weekly rent.
+    var wkT = pdfGbp(c.weekly).replace(/\.\d\d$/, ''), wkW = Math.max(34, doc.getTextWidth(wkT) + 8);
+    var y = 130 + sh; doc.setLineWidth(1.4); box(X, y, 464 - wkW, 16, PINK); box(X + 464 - wkW, y, wkW, 16); doc.setLineWidth(0.7);
+    doc.text('Weekly Rent', X + 3, y + 12); doc.text(wkT, X + 461, y + 12, { align: 'right' });
+    y = 162 + sh;
     var rows = [['One Months rent in advance', c.rent], ['Tenants Deposit', c.deposit]];
     doc.setLineWidth(1.4); box(X, y, W, rows.length * 15); doc.setLineWidth(0.7);
     rows.forEach(function(r, i){
@@ -19380,18 +19407,26 @@
     y += 20; var cols = [[0, 118, 'Description'], [118, 70, 'Date Taken'], [188, 88, 'Receipt number'], [276, 54, 'Method'], [330, 86, 'Amount taken']];
     cols.forEach(function(col){ box(X + col[0], y, col[1], 15, PINK); doc.text(col[2], X + col[0] + 3, y + 11); });
     var list = (d.receipts || []).filter(function(r){ return r.desc || r.date || r.amount != null; }), n = Math.max(10, list.length);
+    // Long text wraps inside its own column and the row grows, so nothing is lost or runs into the next column.
+    var yy = y + 15;
     for (var i = 0; i < n; i++) {
-      var yy = y + 15 + i * 15, r = list[i] || {};
-      cols.forEach(function(col){ box(X + col[0], yy, col[1], 15); });
+      var r = list[i] || {}, dl = doc.splitTextToSize(String(r.desc || ''), 112), rl = doc.splitTextToSize(String(r.receipt || ''), 82), mt = String(r.method || ''), mfs = 10;
+      // The narrow Method column: a little smaller first (so "Bank transfer" stays on one line), then wrap.
+      while (doc.getTextWidth(mt) > 48 && mfs > 8) { mfs -= 0.5; doc.setFontSize(mfs); }
+      var ml = doc.splitTextToSize(mt, 48); doc.setFontSize(10);
+      var rh = 15 + (Math.max(dl.length, rl.length, ml.length, 1) - 1) * 11;
+      if (yy + rh > PH - 50) { if (!list[i]) break; doc.addPage(); yy = 60; cols.forEach(function(col){ box(X + col[0], yy, col[1], 15, PINK); doc.text(col[2], X + col[0] + 3, yy + 11); }); yy += 15; }
+      cols.forEach(function(col){ box(X + col[0], yy, col[1], rh); });
       if (list[i]) {
-        doc.text(doc.splitTextToSize(r.desc || '', 112)[0] || '', X + 3, yy + 11);
+        dl.forEach(function(t, k){ doc.text(t, X + 3, yy + 11 + k * 11); });
         doc.text(ukDay(r.date), X + 185, yy + 11, { align: 'right' });
-        doc.text(doc.splitTextToSize(r.receipt || '', 82)[0] || '', X + 191, yy + 11);
-        doc.text(r.method || '', X + 279, yy + 11);
+        rl.forEach(function(t, k){ doc.text(t, X + 191, yy + 11 + k * 11); });
+        doc.setFontSize(mfs); ml.forEach(function(t, k){ doc.text(t, X + 279, yy + 11 + k * 11); }); doc.setFontSize(10);
         if (num(r.amount) !== null) doc.text(pdfGbp(r.amount), X + 413, yy + 11, { align: 'right' });
       }
+      yy += rh;
     }
-    y += 15 + n * 15;
+    y = yy; if (y + 75 > PH - 40) { doc.addPage(); y = 60; }
     box(X + 276, y, 54, 15); box(X + 330, y, 86, 15); doc.text('Total', X + 279, y + 11); doc.text(pdfGbp(c.btIn), X + 413, y + 11, { align: 'right' });
     y += 40; doc.setLineWidth(1.4); box(X, y, W, 16, PINK); doc.setLineWidth(0.7);
     doc.text(c.btLeft < -0.004 ? 'Overpaid' : 'Move in monies to pay', X + 3, y + 12); doc.text(pdfGbp(Math.abs(c.btLeft)), R - 4, y + 12, { align: 'right' });
@@ -19412,7 +19447,13 @@
       doc.setFontSize(9); doc.setFillColor(235, 235, 235); doc.rect(X, y, R - X, 18, 'F');
       doc.text('Name', X + 6, y + 12); doc.text('Phone', X + 200, y + 12); doc.text('Email', X + 310, y + 12); y += 18;
       doc.setFont('helvetica', 'normal');
-      list.forEach(function(p){ doc.text(doc.splitTextToSize(p.name || '', 185)[0] || '', X + 6, y + 13); doc.text(p.phone || '', X + 200, y + 13); doc.text(doc.splitTextToSize(p.email || '', R - X - 316)[0] || '', X + 310, y + 13); doc.setDrawColor(220); doc.line(X, y + 19, R, y + 19); y += 20; });
+      // Long names, numbers and emails wrap onto more lines (the row grows) — never shortened.
+      list.forEach(function(p){
+        var nl = doc.splitTextToSize(String(p.name || ''), 185), pl = doc.splitTextToSize(String(p.phone || ''), 104), el = doc.splitTextToSize(String(p.email || ''), R - X - 316);
+        var ex = (Math.max(nl.length, pl.length, el.length, 1) - 1) * 11;
+        if (y + 20 + ex > doc.internal.pageSize.getHeight() - 50) { doc.addPage(); y = 60; }
+        nl.forEach(function(t, k){ doc.text(t, X + 6, y + 13 + k * 11); }); pl.forEach(function(t, k){ doc.text(t, X + 200, y + 13 + k * 11); }); el.forEach(function(t, k){ doc.text(t, X + 310, y + 13 + k * 11); });
+        doc.setDrawColor(220); doc.line(X, y + 19 + ex, R, y + 19 + ex); y += 20 + ex; });
       y += 20;
     };
     table('Tenants', (d.tenants || []).filter(function(p){ return p.name; }));

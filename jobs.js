@@ -950,6 +950,40 @@ function apptWindow(date, time) {
   const next = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + 1));
   return { allDay: true, start: day, end: next.toISOString().slice(0, 10).replace(/-/g, '') };
 }
+// PDF text wrapping (pdf-lib fonts): whole words onto lines no wider than `width`; a single word wider than the line (a link, a long
+// email address, a long double-barrelled name) is broken across lines instead of running out of its box. `text` must already be
+// made safe for the font. With `max`, at most that many lines - the last ends at a whole word with "..." (only for short labels).
+function pdfWrap(text, font, size, width, max) {
+  const out = [];
+  String(text == null ? '' : text).split('\n').forEach(function (para) {
+    let cur = '';
+    para.split(/\s+/).forEach(function (w) {
+      while (w.length > 1 && font.widthOfTextAtSize(w, size) > width) {
+        // Break after a hyphen, slash, dot or @ where there is one (filling the current line first), else mid-word.
+        if (cur) {
+          let j = w.length - 1; while (j > 0 && !(/[-\/.@_]/.test(w[j - 1]) && font.widthOfTextAtSize(cur + ' ' + w.slice(0, j), size) <= width)) j--;
+          if (j > 0) { out.push(cur + ' ' + w.slice(0, j)); cur = ''; w = w.slice(j); continue; }
+          out.push(cur); cur = '';
+        }
+        let k = w.length; while (k > 1 && font.widthOfTextAtSize(w.slice(0, k), size) > width) k--;
+        for (let q = k; q > 1; q--) if (/[-\/.@_]/.test(w[q - 1])) { k = q; break; }
+        out.push(w.slice(0, k)); w = w.slice(k);
+      }
+      const t = cur ? cur + ' ' + w : w;
+      if (cur && font.widthOfTextAtSize(t, size) > width) { out.push(cur); cur = w; } else cur = t;
+    });
+    out.push(cur);
+  });
+  if (max && out.length > max) {
+    const keep = out.slice(0, max); let last = keep[max - 1];
+    while (last && font.widthOfTextAtSize(last + '...', size) > width) { const sp = last.lastIndexOf(' '); last = sp > 0 ? last.slice(0, sp) : last.slice(0, -1); }
+    keep[max - 1] = String(last || '').replace(/[\s,;:-]+$/, '') + '...';
+    return keep;
+  }
+  return out;
+}
+// The largest font size (down to `min`) at which `text` fits `width` on one line.
+function pdfFit(text, font, size, width, min) { let s = size; while (s > (min || 6) && font.widthOfTextAtSize(String(text || ''), s) > width) s -= 0.25; return s; }
 function icsText(v) { return String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([;,])/g, '\\$1'); }
 function icsFold(line) {
   const out = []; let s = line;
@@ -5289,10 +5323,7 @@ module.exports = function mountJobs(app, opts) {
     const dt = inv.data || {}, fmtM = function (v) { return '\xA3' + Number(v || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
     const day = function (v) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''; };
     const iso = function (v) { return v ? new Date(v).toISOString() : ''; };
-    const wrap = function (text, font, size, width) {
-      const out = []; String(text || '').split(/\n/).forEach(function (para) { let cur = ''; safe(para).split(' ').forEach(function (w) { const t = cur ? cur + ' ' + w : w; if (cur && font.widthOfTextAtSize(t, size) > width) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); });
-      return out;
-    };
+    const wrap = function (text, font, size, width) { return pdfWrap(String(text || '').split(/\n/).map(safe).join('\n'), font, size, width); };
     let page = pdf.addPage([W, H]), y;
     const right = function (pg, text, x, yy, size, font, color) { const t = safe(text); pg.drawText(t, { x: x - font.widthOfTextAtSize(t, size), y: yy, size: size, font: font, color: color || ink }); };
     const footer = function (pg) { pg.drawText(safe((INVOICE.from || 'Residential Realtors') + ' - Trading name of Estallion Investments Limited - Registered in England No. ' + (INVOICE.companyNo || '') + (INVOICE.vatNo ? ' - VAT No. ' + INVOICE.vatNo : '')), { x: M, y: 40, size: 7.5, font: F, color: soft }); pg.drawText(safe('Registered office: ' + (INVOICE.address || '')), { x: M, y: 29, size: 7.5, font: F, color: soft }); };
@@ -5305,16 +5336,19 @@ module.exports = function mountJobs(app, opts) {
     from.forEach(function (l, i) { page.drawText(safe(l), { x: M, y: y - i * 13, size: i ? 9.5 : 10.5, font: i ? F : B, color: i ? soft : ink }); });
     const overdue = !inv.paid_at && dt.due && dt.due < new Date().toISOString().slice(0, 10);
     const facts = [['Invoice no.', inv.number], ['Date', day(dt.date) || day(iso(inv.created_at))]].concat(dt.due ? [['Due', day(dt.due)]] : [], [['Reference', dt.ref || inv.number]], inv.job_id ? [['Repair', refFor(inv.job_id)]] : []);
-    facts.forEach(function (f, i) { right(page, f[0], W - M - 130, y - i * 15, 9.5, B, soft); right(page, f[1], W - M, y - i * 15, 10, F); });
+    // Labels end 130pt from the right; a value too long for the space after its label (a long reference) wraps onto more lines.
+    let fy = y;
+    facts.forEach(function (f) { right(page, f[0], W - M - 130, fy, 9.5, B, soft); wrap(f[1], F, 10, 122).forEach(function (ln, j) { if (j) fy -= 12; right(page, ln, W - M, fy, 10, F); }); fy -= 15; });
     const st = inv.paid_at ? 'PAID ' + day(iso(inv.paid_at)).toUpperCase() : overdue ? 'OVERDUE' : 'AWAITING PAYMENT';
-    right(page, st, W - M, y - facts.length * 15 - 6, 10, B, inv.paid_at ? okc : overdue ? red : rgb(0.7, 0.42, 0.02));
-    y = Math.min(y - from.length * 13, y - facts.length * 15 - 6) - 26;
+    right(page, st, W - M, fy - 6, 10, B, inv.paid_at ? okc : overdue ? red : rgb(0.7, 0.42, 0.02));
+    y = Math.min(y - from.length * 13, fy - 6) - 26;
     // Who it's to and the property.
     const to = [dt.landlord || inv.landlord_name || ''].concat(String(dt.landlordAddress || '').split(/\n|\s*,\s*/)).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
     page.drawText('INVOICE TO', { x: M, y: y, size: 8.5, font: B, color: soft }); page.drawText('PROPERTY', { x: W / 2 + 10, y: y, size: 8.5, font: B, color: soft }); y -= 15;
     const pa = wrap(inv.property_address || '', F, 10, W / 2 - M - 10).concat(dt.title && !inv.job_id ? wrap(dt.title, F, 9.5, W / 2 - M - 10) : []);
-    const n = Math.max(to.length, pa.length);
-    for (let i = 0; i < n; i++) { if (to[i]) page.drawText(safe(to[i]).slice(0, 60), { x: M, y: y, size: i ? 9.5 : 10.5, font: i ? F : B, color: ink }); if (pa[i]) page.drawText(pa[i], { x: W / 2 + 10, y: y, size: 10, font: F, color: ink }); y -= 13; }
+    const toL = []; to.forEach(function (l, i) { wrap(l, i ? F : B, i ? 9.5 : 10.5, W / 2 - M - 20).forEach(function (x) { toL.push([x, i]); }); });
+    const n = Math.max(toL.length, pa.length);
+    for (let i = 0; i < n; i++) { if (toL[i]) page.drawText(toL[i][0], { x: M, y: y, size: toL[i][1] ? 9.5 : 10.5, font: toL[i][1] ? F : B, color: ink }); if (pa[i]) page.drawText(pa[i], { x: W / 2 + 10, y: y, size: 10, font: F, color: ink }); y -= 13; }
     y -= 20;
     // The lines.
     const head = function () { page.drawRectangle({ x: M, y: y - 6, width: W - M * 2, height: 20, color: band }); page.drawText('DESCRIPTION', { x: M + 8, y: y, size: 8.5, font: B, color: soft }); right(page, 'AMOUNT', W - M - 8, y, 8.5, B, soft); y -= 26; };
@@ -5335,11 +5369,12 @@ module.exports = function mountJobs(app, opts) {
     // How to pay (until it's paid).
     if (!inv.paid_at && INVOICE.payee && INVOICE.accountNumber) {
       const pay = [['Account name', INVOICE.payee], ['Sort code', INVOICE.sortCode], ['Account number', INVOICE.accountNumber]].concat(INVOICE.iban ? [['IBAN', INVOICE.iban]] : [], INVOICE.swift ? [['SWIFT / BIC', INVOICE.swift]] : [], [['Reference', dt.ref || inv.number]]);
-      const h = 26 + pay.length * 14;
+      const payL = pay.map(function (r) { return wrap(r[1], F, 10, W - M * 2 - 130); });
+      const h = 26 + payL.reduce(function (a, l) { return a + l.length; }, 0) * 14;
       if (y - h < 70) { footer(page); page = pdf.addPage([W, H]); y = H - 70; }
       page.drawRectangle({ x: M, y: y - h + 12, width: W - M * 2, height: h, color: band });
       page.drawText('How to pay', { x: M + 10, y: y - 4, size: 10.5, font: B, color: ink }); y -= 22;
-      pay.forEach(function (r) { page.drawText(safe(r[0]), { x: M + 10, y: y, size: 9.5, font: B, color: soft }); page.drawText(safe(r[1]), { x: M + 120, y: y, size: 10, font: F, color: ink }); y -= 14; });
+      pay.forEach(function (r, i) { page.drawText(safe(r[0]), { x: M + 10, y: y, size: 9.5, font: B, color: soft }); payL[i].forEach(function (ln) { page.drawText(ln, { x: M + 120, y: y, size: 10, font: F, color: ink }); y -= 14; }); });
     } else if (inv.paid_at) page.drawText(safe('Paid with thanks on ' + day(iso(inv.paid_at)) + '.'), { x: M, y: y, size: 10, font: F, color: okc });
     footer(page);
     return await pdf.save();
@@ -6124,7 +6159,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
     const ink = rgb(0.06, 0.07, 0.09), soft = rgb(0.38, 0.4, 0.45), line = rgb(0.86, 0.87, 0.9), red = rgb(0.85, 0.15, 0.18), okc = rgb(0.07, 0.57, 0.29), band = rgb(0.96, 0.97, 0.98);
     const safe = function (x) { return String(x == null ? '' : x).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/[^\x20-\x7E\xA3\xA0-\xFF]/g, ''); };
-    const wrap = function (text, font, size, width) { const out = []; String(text || '').split(/\n/).forEach(function (para) { let cur = ''; safe(para).split(' ').forEach(function (w) { const t = cur ? cur + ' ' + w : w; if (cur && font.widthOfTextAtSize(t, size) > width) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); }); return out; };
+    const wrap = function (text, font, size, width) { return pdfWrap(String(text || '').split(/\n/).map(safe).join('\n'), font, size, width); };
     const day = function (v) { return v ? new Date(v).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
     let page = pdf.addPage([W, H]), y;
     const footer = function (pg) { pg.drawText(safe('Residential Realtors - 28-30 Harper Road, London SE1 6AD - 0207 096 8131 - info@residentialrealtors.co.uk'), { x: M, y: 30, size: 7.5, font: F, color: soft }); };
@@ -6136,9 +6171,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     y = 716;
     const done = j.status === 'Completed';
     const facts = [['Reference', refFor(j.id)], ['Property', publicAddress(j.property_address)], ['Repair', issueText(j)], ['Reported', day(j.created_at)], ['Status', done ? 'Completed' + (j.completed_at ? ' on ' + day(j.completed_at) : '') : (j.status === 'Contractor booked' ? 'Contractor arranged' : j.status)]].concat(rep.contractor ? [['Contractor', rep.contractor]] : []);
-    page.drawRectangle({ x: M, y: y - facts.length * 17 - 6, width: W - M * 2, height: facts.length * 17 + 22, color: band });
-    facts.forEach(function (f, i) { const yy = y - i * 17; page.drawText(safe(f[0]).toUpperCase(), { x: M + 12, y: yy, size: 8, font: B, color: soft }); const v = wrap(f[1], f[0] === 'Status' ? B : F, 10, W - M * 2 - 140)[0] || ''; page.drawText(v, { x: M + 120, y: yy, size: 10, font: f[0] === 'Status' ? B : F, color: f[0] === 'Status' && done ? okc : ink }); });
-    y -= facts.length * 17 + 34;
+    // Every line of each fact is shown (a long address or repair wraps), and the box grows to fit.
+    const factL = facts.map(function (f) { return wrap(f[1], f[0] === 'Status' ? B : F, 10, W - M * 2 - 140); });
+    const factH = factL.reduce(function (a, l) { return a + 17 + (Math.max(1, l.length) - 1) * 13; }, 0);
+    page.drawRectangle({ x: M, y: y - factH - 6, width: W - M * 2, height: factH + 22, color: band });
+    let fy = y;
+    facts.forEach(function (f, i) { page.drawText(safe(f[0]).toUpperCase(), { x: M + 12, y: fy, size: 8, font: B, color: soft }); factL[i].forEach(function (v, k) { page.drawText(v, { x: M + 120, y: fy - k * 13, size: 10, font: f[0] === 'Status' ? B : F, color: f[0] === 'Status' && done ? okc : ink }); }); fy -= 17 + (Math.max(1, factL[i].length) - 1) * 13; });
+    y -= factH + 34;
     if (!rep.sections.length) { page.drawText(safe('The full report will appear here once the repair has been completed.'), { x: M, y: y, size: 10.5, font: F, color: soft }); y -= 20; }
     rep.sections.forEach(function (sc) {
       const rows = wrap(sc[1], F, 10.5, W - M * 2);
@@ -6859,7 +6898,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const hex = function (h) { return rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255); };
     const C = { navy: hex('0B1F3A'), navy2: hex('16305A'), red: hex('D9262E'), ink: hex('101828'), ink2: hex('344054'), soft: hex('667085'), faint: hex('98A2B3'), line: hex('E4E7EC'), panel: hex('F5F7FA'), white: rgb(1, 1, 1), green: hex('067647'), greenBg: hex('ECFDF3'), blueBg: hex('EEF4FF'), blue: hex('1D3FAE'), amberBg: hex('FFFAEB'), amber: hex('B54708') };
     const safe = function (x) { return String(x == null ? '' : x).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/→/g, '->').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
-    const wrap = function (t, font, size, width) { const out = []; safe(t).split('\n').forEach(function (para) { let cur = ''; para.split(/\s+/).forEach(function (w) { const tt = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(tt, size) > width && cur) { out.push(cur); cur = w; } else cur = tt; }); out.push(cur); }); return out; };
+    const wrap = function (t, font, size, width) { return pdfWrap(safe(t), font, size, width); };
+    // The font size (from `size` down to `min`) at which `t` takes at most `max` lines of `width`, and those lines.
+    const fitLines = function (t, font, size, width, max, min) { let s = size, ls = wrap(t, font, s, width); while (ls.length > max && s > min) { s -= 0.25; ls = wrap(t, font, s, width); } return { size: s, lines: ls.length > max ? pdfWrap(safe(t), font, s, width, max) : ls }; };
     let page, y;
     const pages = [];
     const text = function (s, x, yy, size, font, color) { page.drawText(safe(s), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
@@ -6880,12 +6921,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
         page.drawRectangle({ x: M, y: H - 106, width: 34, height: 3, color: C.red });
         text('Change of Tenancy Agreement', M, H - 132, 23, B, C.white);
         text('Assignment and substitution of a tenant', M, H - 150, 10.5, F, hex('C7D2E4'));
-        wrap(v.address, B, 11, CW).slice(0, 2).forEach(function (ln, i) { text(ln, M, H - 172 - i * 14, 11, B, hex('DCE3EE')); });
+        const ha = fitLines(v.address, B, 11, CW, 2, 8); ha.lines.forEach(function (ln, i) { text(ln, M, H - 172 - i * 14, ha.size, B, hex('DCE3EE')); });
         y = H - 222;
       } else {
         page.drawRectangle({ x: 0, y: H - 4, width: W, height: 4, color: C.red });
         if (logoI) { const h = 24, w = logoI.width * h / logoI.height; page.drawImage(logoI, { x: M, y: H - 44, width: w, height: h }); }
-        right('Change of Tenancy  \xB7  Ref ' + v.ref, W - M, H - 30, 8, B, C.ink2); right(safe(v.address).slice(0, 70), W - M, H - 42, 7.6, F, C.soft);
+        right('Change of Tenancy  \xB7  Ref ' + v.ref, W - M, H - 30, 8, B, C.ink2); const sa = fitLines(v.address, F, 7.6, CW - 140, 1, 5.5); right(sa.lines[0], W - M, H - 42, sa.size, F, C.soft);
         y = H - 74;
       }
     };
@@ -6923,9 +6964,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     newPage(true);
     // At a glance.
     const glance = [['EFFECTIVE DATE', v.effective], ['TENANT CHANGE', v.in_name + ' replaces ' + v.out_name], ['MONTHLY RENT', v.rent_total || '-']];
-    const gw = (CW - 20) / 3; ensure(64);
-    glance.forEach(function (g, i) { const x = M + i * (gw + 10); rr(x, y, gw, 56, 12, i === 1 ? C.blueBg : C.panel, C.line); text(g[0], x + 12, y - 18, 6.8, B, C.soft); wrap(g[1], B, 10.5, gw - 24).slice(0, 2).forEach(function (ln, k) { text(ln, x + 12, y - 33 - k * 12.5, 10.5, B, i === 1 ? C.blue : C.ink); }); });
-    y -= 72;
+    // The tiles grow to fit every line (long names wrap, a long single word is broken), all three the same height.
+    const gw = (CW - 20) / 3, gl = glance.map(function (g) { return wrap(g[1], B, 10.5, gw - 24); });
+    const gh = Math.max(56, 33 + (Math.max.apply(null, gl.map(function (l) { return l.length; })) - 1) * 12.5 + 10.5); ensure(gh + 8);
+    glance.forEach(function (g, i) { const x = M + i * (gw + 10); rr(x, y, gw, gh, 12, i === 1 ? C.blueBg : C.panel, C.line); text(g[0], x + 12, y - 18, 6.8, B, C.soft); gl[i].forEach(function (ln, k) { text(ln, x + 12, y - 33 - k * 12.5, 10.5, B, i === 1 ? C.blue : C.ink); }); });
+    y -= gh + 16;
     heading(1, 'The change of tenant', 300);
     people([
       { tag: 'OUTGOING TENANT', tagFg: C.amber, tagBg: C.amberBg, bar: C.amber, name: v.out_name, rows: [['Moves out / liable until', v.last_day], ['Share of rent', v.out_share], ['Share of deposit', v.out_deposit], ['Forwarding address', v.out_address], ['Email', v.out_email], ['Mobile', v.out_phone]] },
@@ -6971,7 +7014,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       ensure(sh + 10);
       signers.slice(i, i + 2).forEach(function (s, k) {
         const x = M + k * (sw + 12); rr(x, y, sw, sh, 12, C.panel, C.line);
-        text(s[0], x + 14, y - 18, 6.8, B, C.soft); text(s[1], x + 14, y - 31, 9.6, B, C.ink);
+        text(s[0], x + 14, y - 18, 6.8, B, C.soft);
+        const sn = fitLines(s[1], B, 9.6, sw - 28, 2, 7); sn.lines.forEach(function (ln, j) { text(ln, x + 14, y - 31 - j * (sn.size + 2), sn.size, B, C.ink); });
         page.drawLine({ start: { x: x + 14, y: y - 58 }, end: { x: x + sw - 14, y: y - 58 }, thickness: 0.7, color: C.faint });
         text('Signature', x + 14, y - 69, 7, F, C.soft); text('Date', x + sw - 80, y - 69, 7, F, C.soft);
       });
@@ -10492,18 +10536,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const money = function (v) { return '\xA3' + (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
     const dayOf = function (v) { return v ? new Date(String(v).length === 10 ? v + 'T12:00:00Z' : v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }) : ''; };
     const stamp = function (v) { return v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '') : ''; };
-    const wrap = function (text, font, size, width) {
-      const out = [];
-      safe(text).split('\n').forEach(function (para) {
-        let cur = '';
-        para.split(/\s+/).forEach(function (w) {
-          while (font.widthOfTextAtSize(w, size) > width && w.length > 1) { let k = w.length; while (k > 1 && font.widthOfTextAtSize(w.slice(0, k), size) > width) k--; if (cur) { out.push(cur); cur = ''; } out.push(w.slice(0, k)); w = w.slice(k); }
-          const t = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(t, size) > width && cur) { out.push(cur); cur = w; } else cur = t;
-        });
-        out.push(cur);
-      });
-      return out;
-    };
+    const wrap = function (text, font, size, width, max) { return pdfWrap(safe(text), font, size, width, max); };
     const text = function (t, x, yy, size, font, color) { page.drawText(safe(t), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
     const spaced = function (t, x, yy, size, font, color, gap) { let cx = x; safe(t).split('').forEach(function (ch) { page.drawText(ch, { x: cx, y: yy, size: size, font: font, color: color }); cx += font.widthOfTextAtSize(ch, size) + (gap || 0.8); }); return cx - x; };
     const spacedW = function (t, size, font, gap) { return safe(t).split('').reduce(function (a, ch) { return a + font.widthOfTextAtSize(ch, size) + (gap || 0.8); }, 0); };
@@ -10575,25 +10608,33 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Key figures
     const tiles = [['Offer', money(d.offer_entered && d.per === 'pcm' ? m.pcm : o.offer_pw), d.per === 'pcm' ? 'per month' : 'per week'], ['Monthly rent', money(m.pcm), 'paid monthly'], ['Holding deposit', money(m.holding), "one week's rent"],
       ['Move-in date', d.move_in ? dayOf(d.move_in) : 'To be agreed', ''], ['Length of stay', d.stay || 'Not given', 'how long they would like to stay'], ['Occupants', ts.length + ' tenant' + (ts.length === 1 ? '' : 's'), (d.guarantors_count || 0) + ' guarantor' + (d.guarantors_count === 1 ? '' : 's')]];
-    const tw = (CW - 20) / 3, th = 58;
+    // A value too wide for its tile (a long "length of stay") wraps at a smaller size and that row of tiles grows to fit.
+    const tw = (CW - 20) / 3;
+    const tv = tiles.map(function (t) { const sz = t[1].length > 16 ? 11 : 14; return B.widthOfTextAtSize(safe(t[1]), sz) <= tw - 24 ? { size: sz, lines: [safe(t[1])] } : { size: 10, lines: wrap(t[1], B, 10, tw - 24, 4) }; });
+    const rowH = [0, 1].map(function (r) { return 58 + (Math.max.apply(null, tv.slice(r * 3, r * 3 + 3).map(function (v) { return v.lines.length; })) - 1) * 12; });
     tiles.forEach(function (t, i) {
-      const x = M + (i % 3) * (tw + 10), top = y - Math.floor(i / 3) * (th + 10);
+      const r = Math.floor(i / 3), th = rowH[r], x = M + (i % 3) * (tw + 10), top = y - (r ? rowH[0] + 10 : 0), extra = (tv[i].lines.length - 1) * 12;
       rr(x, top, tw, th, 8, C.panel, C.line);
       spaced(t[0].toUpperCase(), x + 12, top - 17, 6.6, B, C.soft, 0.6);
-      text(t[1], x + 12, top - 35, t[1].length > 16 ? 11 : 14, B, C.ink);
-      if (t[2]) text(t[2], x + 12, top - 48, 7.5, F, C.soft);
+      tv[i].lines.forEach(function (ln, k) { text(ln, x + 12, top - 35 - k * 12, tv[i].size, B, C.ink); });
+      if (t[2]) text(t[2], x + 12, top - 48 - extra, 7.5, F, C.soft);
     });
-    y -= th * 2 + 10 + 24;
+    y -= rowH[0] + rowH[1] + 10 + 24;
     if (d.max_pw) { para('Maximum offer: ' + money(d.max_pw) + ' per week. The maximum offer is binding subject to contract, references and the terms in this agreement.', { size: 8.5, color: C.soft, section: S1 }); }
     // Parties
     heading('Parties', S1);
-    ensure(96, S1);
-    const pw2 = (CW - 12) / 2, ph = 86;
-    [['Letting agent', 'Residential Realtors', ['Estallion Investments Limited', safe(INVOICE.address || '28-30 Harper Road, London, SE1 6AD'), 'Registered in England No. ' + (INVOICE.companyNo || '08760284')]],
-      ['Lead applicant', o.lead_name, [o.lead_email || '', o.lead_phone || '', 'Signing for ' + ts.length + ' tenant' + (ts.length === 1 ? '' : 's')]]].forEach(function (c, i) {
-      const x = M + i * (pw2 + 12); rr(x, y, pw2, ph, 8, C.white, C.line);
-      spaced(c[0].toUpperCase(), x + 12, y - 17, 6.6, B, C.soft, 0.6); text(c[1], x + 12, y - 33, 11, B, C.ink);
-      c[2].filter(Boolean).forEach(function (l, j) { text(String(l).slice(0, 52), x + 12, y - 48 - j * 11.5, 8.5, F, C.soft); });
+    const pw2 = (CW - 12) / 2;
+    const partyCards = [['Letting agent', 'Residential Realtors', ['Estallion Investments Limited', safe(INVOICE.address || '28-30 Harper Road, London, SE1 6AD'), 'Registered in England No. ' + (INVOICE.companyNo || '08760284')]],
+      ['Lead applicant', o.lead_name, [o.lead_email || '', o.lead_phone || '', 'Signing for ' + ts.length + ' tenant' + (ts.length === 1 ? '' : 's')]]].map(function (c) {
+      // Names and details wrap inside the card (an email address is never shortened) and the cards grow to fit.
+      return { tag: c[0], name: wrap(c[1], B, 11, pw2 - 24), lines: [].concat.apply([], c[2].filter(Boolean).map(function (l) { return wrap(l, F, 8.5, pw2 - 24); })) };
+    });
+    const ph = Math.max.apply(null, [86].concat(partyCards.map(function (c) { return 48 + (c.name.length - 1) * 14 + (c.lines.length - 1) * 11.5 + 15; })));
+    ensure(ph + 10, S1);
+    partyCards.forEach(function (c, i) {
+      const x = M + i * (pw2 + 12), dn = (c.name.length - 1) * 14; rr(x, y, pw2, ph, 8, C.white, C.line);
+      spaced(c.tag.toUpperCase(), x + 12, y - 17, 6.6, B, C.soft, 0.6); c.name.forEach(function (ln, j) { text(ln, x + 12, y - 33 - j * 14, 11, B, C.ink); });
+      c.lines.forEach(function (l, j) { text(l, x + 12, y - 48 - dn - j * 11.5, 8.5, F, C.soft); });
     });
     y -= ph + 18;
     // Conditions
@@ -10646,16 +10687,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
     ensure(190, S2); heading('Declaration and signature', S2);
     tick(M, y + 2, 12); wrap('I confirm the information provided is fully accurate, that I have read and understood the holding deposit information above, and that I am authorised to make decisions and sign on behalf of all tenants.', F, 9.2, CW - 22).forEach(function (ln) { text(ln, M + 20, y - 7, 9.2, F, C.ink); y -= 13; }); y -= 12;
     // Signature block
-    ensure(128, S2);
-    const sh = 108; rr(M, y, CW, sh, 10, C.white, C.line);
-    const sw = CW * 0.52;
+    const sw = CW * 0.52, sx = M + sw + 6;
+    // The details on the right wrap within their column (each row moves down to make room); the box grows to fit.
+    const sigRows = [['Signed by', (d.signature || o.lead_name || '')], ['Date and time', stamp(d.signed_at || o.created_at) + ' UK'], ['Method', sig ? 'Drawn on screen' : 'Typed name'], ['IP address', audit.ip || d.ip || '-'], ['Document ID', docId]].map(function (r) { return [r[0], wrap(r[1], r[0] === 'Document ID' ? MONO : F, 8.5, W - M - sx - 4), r[0] === 'Document ID']; });
+    let sigLast = 18; sigRows.forEach(function (r, i) { if (i) sigLast += 19 + (sigRows[i - 1][1].length - 1) * 10; r.top = sigLast; });
+    const sh = Math.max(108, sigLast + 9 + (sigRows[sigRows.length - 1][1].length - 1) * 10 + 5);
+    ensure(sh + 20, S2);
+    rr(M, y, CW, sh, 10, C.white, C.line);
     rr(M + 10, y - 10, sw - 20, sh - 20, 6, C.white);
     if (sig) { try { const im = await pdf.embedPng(sig.data); const h = 58, w = Math.min(sw - 40, im.width * h / im.height); page.drawImage(im, { x: M + 10 + (sw - 20 - w) / 2, y: y - 22 - h, width: w, height: h }); } catch (e) {} }
     page.drawLine({ start: { x: M + 22, y: y - 86 }, end: { x: M + sw - 22, y: y - 86 }, thickness: 0.6, color: C.faint });
-    text(safe(d.signature || o.lead_name || ''), M + 22, y - 99, 8.5, B, C.ink);
-    const sx = M + sw + 6;
-    [['Signed by', (d.signature || o.lead_name || '')], ['Date and time', stamp(d.signed_at || o.created_at) + ' UK'], ['Method', sig ? 'Drawn on screen' : 'Typed name'], ['IP address', audit.ip || d.ip || '-'], ['Document ID', docId]].forEach(function (r, i) {
-      spaced(r[0].toUpperCase(), sx, y - 18 - i * 19, 6, B, C.soft, 0.5); text(String(r[1]).slice(0, 40), sx, y - 27 - i * 19, 8.5, r[0] === 'Document ID' ? MONO : F, C.ink);
+    const pn = safe(d.signature || o.lead_name || ''), pns = pdfFit(pn, B, 8.5, sw - 44, 6);
+    text(wrap(pn, B, pns, sw - 44, 1)[0], M + 22, y - 99, pns, B, C.ink);
+    sigRows.forEach(function (r) {
+      spaced(r[0].toUpperCase(), sx, y - r.top, 6, B, C.soft, 0.5); r[1].forEach(function (ln, j) { text(ln, sx, y - r.top - 9 - j * 10, 8.5, r[2] ? MONO : F, C.ink); });
     });
     y -= sh + 10;
     text('Signed electronically - legally binding in England and Wales (Electronic Communications Act 2000). See the audit trail at the end.', M, y, 7.4, F, C.soft); y -= 14;
@@ -10664,7 +10709,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     for (let i = 0; i < ts.length; i++) {
       const t = ts[i], S3 = 'Tenant ' + (i + 1) + ' of ' + ts.length; newPage(S3);
       spaced((i === 0 ? 'LEAD TENANT' : 'TENANT ' + (i + 1)), M, y, 7, B, C.red, 0.9); y -= 22;
-      text(t.name, M, y, 20, B, C.navy); y -= 26;
+      const tns = pdfFit(safe(t.name), B, 20, CW, 14), tnl = wrap(t.name, B, tns, CW);
+      tnl.forEach(function (ln, k) { text(ln, M, y - k * (tns + 4), tns, B, C.navy); }); y -= 26 + (tnl.length - 1) * (tns + 4);
       heading('Personal details', S3); grid([['Full name', t.name], ['Date of birth', dayOf(t.dob)], ['Phone', t.phone], ['Email', t.email]], S3);
       heading('Employment and income', S3); grid([['Main income', t.income_type], ['Employment type', t.employment_type], ['Company', t.company], ['Position', t.position], ['Gross annual salary', t.salary ? '\xA3' + t.salary : ''], ['Start date', dayOf(t.start_date)], ['Additional income', t.other_income, 'full']], S3);
       if (t.university || t.course || t.academic_year) { heading('Study', S3); grid([['University', t.university], ['Course', t.course], ['Academic year', t.academic_year]], S3); }
@@ -10828,7 +10874,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     page.drawText(amount, { x: M, y: y, size: 30, font: B, color: okc }); y -= 34;
     const rows = [['Receipt for', 'Holding deposit (one week\'s rent)'], ['Offer reference', ref], ['Property', o.property_address], ['Received from', o.lead_name + (d.tenants && d.tenants.length > 1 ? ' (on behalf of ' + d.tenants.length + ' tenants)' : '')],
       ['Date received', when(o.paid_at)]].concat(diff ? [['Holding deposit due', fmtM(due)], [diff < 0 ? 'Still to pay' : 'Paid over', fmtM(Math.abs(diff)) + (diff < 0 ? ' - please pay the rest' : ' - taken off what\'s due at signing')]] : [], [['Payment reference', (addrPayRef(o.property_address) || ref)], ['Offer', '\xA3' + Number(o.offer_pw).toFixed(2) + ' a week (\xA3' + Number(m.pcm || 0).toFixed(2) + ' a month)'], ['Move-in date', d.move_in ? when(d.move_in + 'T12:00:00Z') : '-']]);
-    rows.forEach(function (r) { page.drawText(safe(r[0]), { x: M, y: y, size: 9.5, font: B, color: soft }); page.drawText(safe(r[1]).slice(0, 80), { x: M + 150, y: y, size: 10.5, font: F, color: ink }); y -= 10; page.drawLine({ start: { x: M, y: y }, end: { x: 595.28 - M, y: y }, thickness: 0.5, color: line }); y -= 16; });
+    rows.forEach(function (r) { page.drawText(safe(r[0]), { x: M, y: y, size: 9.5, font: B, color: soft }); pdfWrap(safe(r[1]), F, 10.5, 595.28 - M * 2 - 150).forEach(function (ln, k) { if (k) y -= 13; page.drawText(ln, { x: M + 150, y: y, size: 10.5, font: F, color: ink }); }); y -= 10; page.drawLine({ start: { x: M, y: y }, end: { x: 595.28 - M, y: y }, thickness: 0.5, color: line }); y -= 16; });
     y -= 10;
     ['This holding deposit reserves the property while references and the tenancy agreement are prepared. It does not create a tenancy.', 'Once your offer is accepted it goes towards your first month\'s rent. The rest of the move-in money is due when you sign the tenancy agreement.',
       'It is returned within 24 hours if the landlord rejects your maximum offer or withdraws the property, and is not refundable in the cases set out in the information sheet you agreed to.']
@@ -11724,7 +11770,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const ds = function (v) { v = String(v || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v.slice(8, 10) + '/' + v.slice(5, 7) + '/' + v.slice(2, 4) : ''; };
     const many = (a.props || []).length > 1;   // several properties: each line says which
     const row = function (r) { return '<tr' + (r.note ? ' class="note"' : '') + '><td>' + htmlEsc(ds(r.at)) + '</td><td>' + htmlEsc(r.what + (many && r.prop ? ' · ' + r.prop : '')) + '</td><td class="a in">' + (r.in ? money(r.in) : '') + '</td><td class="a out">' + (r.out ? money(r.out) : '') + '</td><td class="a">' + (r.note ? '' : money(r.balance)) + '</td></tr>'; };
-    res.send(trackShell('Statement of account', '<style>table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{font-size:.78rem;color:#6b7280;font-weight:600}td.a,th.a{text-align:right;white-space:nowrap}td.in{color:#067647}td.out{color:#b42318}tr.note td{color:#6b7280;font-style:italic}tr.t td{font-weight:700;background:#f6f7f9}.per{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin:0 0 12px}.per label{display:flex;flex-direction:column;font-size:.8rem;color:#6b7280;gap:3px}.per select,.per input{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px}.per [hidden]{display:none!important}.wrap{overflow-x:auto}@media(max-width:560px){th:nth-child(5),td:nth-child(5):not([colspan]){display:none}table{font-size:.85rem}}@media print{.noprint{display:none}}</style>' +
+    res.send(trackShell('Statement of account', '<style>table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{font-size:.78rem;color:#6b7280;font-weight:600}td.a,th.a{text-align:right;white-space:nowrap}td.in{color:#067647}td.out{color:#b42318}tr.note td{color:#6b7280;font-style:italic}tr.t td{font-weight:700;background:#f6f7f9}.per{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin:0 0 12px}.per label{display:flex;flex-direction:column;font-size:.8rem;color:#6b7280;gap:3px}.per select,.per input{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px}.per [hidden]{display:none!important}.wrap{overflow-x:auto}.swipe{margin:-4px 0 8px;font-size:.8rem;color:#6b7280;text-align:right}@media(max-width:560px){th:nth-child(5),td:nth-child(5):not([colspan]){display:none}table{font-size:.85rem}}@media(max-width:480px){table{font-size:.76rem}th,td{padding:6px 3px}.card.wrap{padding-left:10px;padding-right:10px}}@media print{.noprint{display:none}}</style>' +
       '<p class="noprint"><a href="/l/' + tok + '" style="color:var(--blue);font-weight:600;text-decoration:none">← Your properties</a></p>' +
       '<h1>Statement of account</h1><p class="sub">' + (who.l.name ? '<b>' + htmlEsc(who.l.name) + '</b> · ' : '') + htmlEsc((from ? dd(from) : 'From the start') + ' – ' + dd(to)) + '</p>' +
       '<form class="per noprint" method="get"><label>Period<select name="period" onchange="var c=this.value===\'custom\';document.querySelectorAll(\'.cd\').forEach(function(e){e.hidden=!c});if(!c)this.form.submit()">' + opt('all', 'All time') + opt('12m', 'Last 12 months') + opt('tax', 'This tax year (from 6 April)') + opt('custom', 'Choose dates…') + '</select></label>' +
@@ -11735,6 +11781,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
         (list.length ? list.map(row).join('') : '<tr><td></td><td class="muted">Nothing in this period.</td><td></td><td></td><td></td></tr>') +
         '<tr class="t"><td></td><td>Totals</td><td class="a in">' + money(tin) + '</td><td class="a out">' + money(tout) + '</td><td></td></tr>' +
         '<tr class="t"><td></td><td>' + (cf < 0 ? 'Owed to us' : 'Held for you') + ' at ' + htmlEsc(dd(to)) + '</td><td class="a" colspan="3">' + money(Math.abs(cf)) + '</td></tr></tbody></table></div>' +
+      // Very large amounts can still make the table wider than a phone: say so, rather than hiding the Out column off the edge.
+      '<p class="swipe noprint" id="acSwipe" hidden>Swipe the table to see more →</p><script>(function(){var w=document.querySelector(".card.wrap"),h=document.getElementById("acSwipe");if(!w||!h)return;function f(){h.hidden=w.scrollWidth<=w.clientWidth+1}f();window.addEventListener("resize",f)})()</script>' +
       (unpaid.length ? '<div class="card"><h3 style="margin:0 0 6px">Unpaid invoices</h3><table>' + unpaid.map(function (i) { return '<tr><td><a href="/l/' + tok + '/invoice/' + i.id + '" style="color:var(--blue)">' + htmlEsc(i.number || 'Invoice') + '</a>' + ((a.inv_what || {})[i.id] ? ' · ' + htmlEsc(a.inv_what[i.id]) : '') + (many ? ' · ' + htmlEsc(String(i.addr || '').split(',')[0]) : '') + (i.due ? ' · due ' + htmlEsc(dd(i.due)) : '') + '</td><td class="a out">' + money(i.total) + '</td></tr>'; }).join('') + '</table></div>' : '') +
       '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true));
   }));
@@ -12742,7 +12790,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '<style>body{margin:0;font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;background:#f6f7fb;color:#0f172a;line-height:1.5}.top{background:#0b1f3a;color:#fff;padding:22px 16px}.w{max-width:820px;margin:0 auto}.top img{height:40px;background:#fff;border-radius:8px;padding:4px 8px}.top h1{margin:16px 0 4px;font-size:1.7rem}.top p{margin:0;color:#c9d3e1}' +
       '.card{background:#fff;border:1px solid #e6e9ef;border-radius:20px;padding:22px;margin:18px 16px}.rg{display:flex;justify-content:space-between;text-align:center;gap:10px}.rg span{display:block;color:#475467;font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.rg b{font-size:1.4rem;color:#0b1f3a}.rg .m b{font-size:2.1rem;color:#d9262e}' +
       '.bar{position:relative;height:10px;border-radius:6px;background:linear-gradient(90deg,#d1fadf,#fef0c7,#fee4e2);margin:16px 6px 4px}.bar i{position:absolute;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;background:#d9262e;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25)}' +
-      'table{width:100%;border-collapse:collapse;font-size:.94rem}th,td{padding:10px 8px;border-bottom:1px solid #e6e9ef;text-align:left}th{color:#475467;font-size:.8rem}td.r{text-align:right;font-weight:800;color:#0b1f3a;white-space:nowrap}a{color:#d9262e;font-weight:700}.note{color:#475467;font-size:.88rem}.cta{background:#0b1f3a;color:#fff}.est{text-align:center;border:2px solid #d9262e}.est span{display:block;color:#475467;font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.est b{display:block;font-size:2.2rem;color:#d9262e;line-height:1.2}.cta a.b{display:inline-block;margin-top:10px;background:#d9262e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:12px}</style></head><body>' +
+      'table{width:100%;border-collapse:collapse;font-size:.94rem}th,td{padding:10px 8px;border-bottom:1px solid #e6e9ef;text-align:left}th{color:#475467;font-size:.8rem}td.r{text-align:right;font-weight:800;color:#0b1f3a;white-space:nowrap}td:first-child,.top p,.est b{overflow-wrap:anywhere}.rg{flex-wrap:wrap}@media(max-width:480px){.card{padding:16px}.rg b{font-size:1.1rem}.rg .m b{font-size:1.5rem}.est b{font-size:1.7rem}th,td{padding:8px 5px}td.r{font-size:.86rem}}a{color:#d9262e;font-weight:700}.note{color:#475467;font-size:.88rem}.cta{background:#0b1f3a;color:#fff}.est{text-align:center;border:2px solid #d9262e}.est span{display:block;color:#475467;font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.est b{display:block;font-size:2.2rem;color:#d9262e;line-height:1.2}.cta a.b{display:inline-block;margin-top:10px;background:#d9262e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:12px}</style></head><body>' +
       '<div class="top"><div class="w"><img src="/logo-tight.png" alt="Residential Realtors"><h1>Your local rent comparison</h1><p>' + e(row.address) + (d.beds ? ' · ' + e(d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '') + '</p></div></div><div class="w">' +
       (d.comps_est ? '<div class="card est"><span>Our estimate for your home</span><b>' + gbp0(d.comps_est) + (d.comps_est_high ? ' – ' + gbp0(d.comps_est_high) : '') + '</b><div class="note">per month, from our local team</div></div>' : '') +
       (s.n < 2 ? '' : '<div class="card"><p style="margin:0 0 12px;font-weight:700">' + s.n + ' similar ' + e(bt) + ' nearby</p><div class="rg"><div><span>From</span><b>' + gbp0(s.low) + '</b></div><div class="m"><span>Typical</span><b>' + gbp0(s.mid) + '</b><div class="note">per month</div></div><div><span>Up to</span><b>' + gbp0(s.high) + '</b></div></div><div class="bar"><i style="left:' + pos + '%"></i></div></div>') +
@@ -13200,7 +13248,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const safe = function (x) { return String(x == null ? '' : x).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/·/g, '\xB7').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
     const gbp0 = function (n) { return '\xA3' + Math.round(Number(n) || 0).toLocaleString('en-GB'); };
     const dayOf = function (d) { return d ? new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''; };
-    const wrap = function (t, font, size, width) { const out = []; safe(t).split('\n').forEach(function (para) { let cur = ''; para.split(/\s+/).forEach(function (w) { const tt = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(tt, size) > width && cur) { out.push(cur); cur = w; } else cur = tt; }); out.push(cur); }); return out; };
+    const wrap = function (t, font, size, width) { return pdfWrap(safe(t), font, size, width); };
+    // The font size (from `size` down to `min`) at which `t` takes at most `max` lines of `width`, and those lines.
+    const fitLines = function (t, font, size, width, max, min) { let s = size, ls = wrap(t, font, s, width); while (ls.length > max && s > min) { s -= 0.25; ls = wrap(t, font, s, width); } return { size: s, lines: ls.length > max ? pdfWrap(safe(t), font, s, width, max) : ls }; };
     let page, y;
     const text = function (s, x, yy, size, font, color) { page.drawText(safe(s), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
     const right = function (s, xr, yy, size, font, color) { text(s, xr - (font || F).widthOfTextAtSize(safe(s), size), yy, size, font, color); };
@@ -13222,12 +13272,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
         right(dayOf(v.date) + '  \xB7  ' + ref, W - M, H - 60, 8.4, F, C.white);
         page.drawRectangle({ x: M, y: H - 112, width: 34, height: 3, color: C.red });
         text(mort ? 'Rental valuation letter' : 'Your property valuation', M, H - 138, 24, B, C.white);
-        wrap(address, F, 12, CW).slice(0, 2).forEach(function (ln, i) { text(ln, M, H - 162 - i * 15, 12, F, hex('DCE3EE')); });
+        const ha = fitLines(address, F, 12, CW, 2, 8.5); ha.lines.forEach(function (ln, i) { text(ln, M, H - 162 - i * 15, ha.size, F, hex('DCE3EE')); });
         y = H - 246;
       } else {
         page.drawRectangle({ x: 0, y: H - 4, width: W, height: 4, color: C.red });
         if (logoI) { const h = 26, w = logoI.width * h / logoI.height; page.drawImage(logoI, { x: M, y: H - 46, width: w, height: h }); }
-        right(ref + '  \xB7  ' + safe(address).slice(0, 60), W - M, H - 36, 8, F, C.soft);
+        const hl = ref + '  \xB7  ' + safe(address), hs = F.widthOfTextAtSize(hl, 8) <= CW - 130 ? { size: 8, lines: [hl] } : fitLines(hl, F, 8, CW - 130, 1, 5.5); right(hs.lines[0], W - M, H - 36, hs.size, F, C.soft);
         y = H - 80;
       }
       footer();
@@ -13237,8 +13287,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const heading = function (s) { ensure(40); y -= 8; text(safe(s).toUpperCase(), M, y, 8, B, C.navy); page.drawRectangle({ x: M, y: y - 6, width: 20, height: 1.8, color: C.red }); y -= 22; };
     newPage(true);
     // Recipient and date
-    const to = [v.to_name].concat(String(v.to_address || '').split(/\s*[,\n]\s*/)).filter(Boolean).slice(0, 6);
-    to.forEach(function (ln, i) { text(ln, M, y - i * 13, 9.6, i ? F : B, i ? C.ink2 : C.ink); });
+    // Each line wraps short of the Date / Visited / Reference labels on the right.
+    const to = []; [v.to_name].concat(String(v.to_address || '').split(/\s*[,\n]\s*/)).filter(Boolean).slice(0, 8).forEach(function (l, i) { wrap(l, i ? F : B, 9.6, CW - 170).forEach(function (ln) { to.push([ln, i]); }); });
+    to.forEach(function (ln, i) { text(ln[0], M, y - i * 13, 9.6, ln[1] ? F : B, ln[1] ? C.ink2 : C.ink); });
     right('Date', W - M - 110, y, 8, B, C.soft); right(dayOf(v.date), W - M, y, 9.2, F, C.ink);
     if (v.visited) { right('Visited', W - M - 110, y - 14, 8, B, C.soft); right(dayOf(v.visited), W - M, y - 14, 9.2, F, C.ink); }
     right('Reference', W - M - 110, y - (v.visited ? 28 : 14), 8, B, C.soft); right(ref, W - M, y - (v.visited ? 28 : 14), 9.2, F, C.ink);
@@ -13290,7 +13341,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           const lk = c.url ? (/zoopla/.test(c.url) ? 'view on Zoopla \xBB' : 'view on Rightmove \xBB') : '', lkW = lk ? F.widthOfTextAtSize(safe(lk), 7.6) : 0;
           const lastW = F.widthOfTextAtSize(safe(al[al.length - 1]), 9.2), inline = lk && lastW + 6 + lkW <= addrW;
           ensure(30 + (al.length - 1) * 11.5 + (lk && !inline ? 10.5 : 0));
-          text(String(c.beds || ''), M + CW - 170, y, 9.2, F, C.ink2); right(gbp0(c.price), W - M - 8, y, 9.2, B, C.ink);
+          if (!soldTbl) text(String(c.beds || ''), M + CW - 170, y, 9.2, F, C.ink2); right(gbp0(c.price), W - M - 8, y, 9.2, B, C.ink);
           al.forEach(function (ln, i) { if (i) y -= 11.5; text(ln, M + 8, y, 9.2, F, C.ink); });
           if (lk) {
             let lx = M + 8; if (inline) lx = M + 8 + lastW + 6; else y -= 10.5;
@@ -13323,12 +13374,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const rows = [['Let only', v.find_pct != null ? v.find_pct : LT_STD.sole, LT_STD.sole, 'Tenant find: % of the first 12 months\' rent, taken once'], ['Let + rent collection', v.collect_pct != null ? v.collect_pct : LT_STD.collect, LT_STD.collect, 'Plus % of the rent each month'], ['Fully managed', v.both_pct != null ? v.both_pct : LT_STD.both, LT_STD.both, 'Plus % of the rent each month - we look after everything']];
       ensure(rows.length * 34 + 30);
       rows.forEach(function (r) {
-        rr(M, y, CW, 28, 8, C.white, C.line);
+        // The description wraps short of the fee (and the struck-through standard rate) and the row grows to fit.
+        const tw = F.widthOfTextAtSize(r[2] + '%', 8), xr = W - M - 14 - B.widthOfTextAtSize(r[1] + '% + VAT', 10) - 10;
+        const dl = wrap(r[3].replace('%', r[1] + '%'), F, 8.6, (r[1] < r[2] ? xr - tw - 10 : xr) - (M + 150)), rh = 28 + (dl.length - 1) * 10.5;
+        ensure(rh + 6);
+        rr(M, y, CW, rh, 8, C.white, C.line);
         text(r[0], M + 14, y - 17.5, 9.8, B, C.ink);
-        text(safe(r[3].replace('%', r[1] + '%')), M + 150, y - 17.5, 8.6, F, C.soft);
+        dl.forEach(function (ln, k) { text(ln, M + 150, y - 17.5 - k * 10.5, 8.6, F, C.soft); });
         right(r[1] + '% + VAT', W - M - 14, y - 17.5, 10, B, C.navy);
-        if (r[1] < r[2]) { const tw = F.widthOfTextAtSize(r[2] + '%', 8); const xr = W - M - 14 - B.widthOfTextAtSize(r[1] + '% + VAT', 10) - 10; text(r[2] + '%', xr - tw, y - 17.5, 8, F, C.faint); page.drawLine({ start: { x: xr - tw - 1, y: y - 14.8 }, end: { x: xr + 1, y: y - 14.8 }, thickness: 0.7, color: C.faint }); }
-        y -= 34;
+        if (r[1] < r[2]) { text(r[2] + '%', xr - tw, y - 17.5, 8, F, C.faint); page.drawLine({ start: { x: xr - tw - 1, y: y - 14.8 }, end: { x: xr + 1, y: y - 14.8 }, thickness: 0.7, color: C.faint }); }
+        y -= rh + 6;
       });
       const mgd = rent - rent * (v.both_pct != null ? v.both_pct : LT_STD.both) / 100 * 1.2;
       rr(M, y, CW, 30, 8, C.greenBg); text('Fully managed at ' + gbp0(rent) + ' pcm, you would receive about ' + gbp0(mgd) + ' a month after our fee (inc VAT).', M + 14, y - 19, 9.2, B, C.green); y -= 40;
@@ -13336,7 +13391,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (v.sales && v.sales_fee && !mort) { ensure(60); heading('Selling with Residential Realtors'); para('Our sales fee: ' + v.sales_fee + '.', 9.8); }
     // EPC we hold
     const epc = (await p.query("SELECT rating, expires_on FROM property_certificates WHERE property_key = $1 AND type = 'EPC'", [propKey(address)])).rows[0];
-    if (epc && epc.expires_on) { ensure(34); rr(M, y, CW, 26, 8, C.blueBg); text('EPC rating ' + (epc.rating || '?') + (epc.expires_on >= new Date().toISOString().slice(0, 10) ? ', valid until ' + dayOf(epc.expires_on) : ' - expired ' + dayOf(epc.expires_on) + ' (a new one is needed before marketing)') + (v.lettings ? '. Rented homes need a rating of E or above.' : '.'), M + 14, y - 16.5, 8.8, F, C.blue); y -= 36; }
+    if (epc && epc.expires_on) {
+      const el = wrap('EPC rating ' + (epc.rating || '?') + (epc.expires_on >= new Date().toISOString().slice(0, 10) ? ', valid until ' + dayOf(epc.expires_on) : ' - expired ' + dayOf(epc.expires_on) + ' (a new one is needed before marketing)') + (v.lettings ? '. Rented homes need a rating of E or above.' : '.'), F, 8.8, CW - 28), eh = 26 + (el.length - 1) * 11;
+      ensure(eh + 8); rr(M, y, CW, eh, 8, C.blueBg); el.forEach(function (ln, k) { text(ln, M + 14, y - 16.5 - k * 11, 8.8, F, C.blue); }); y -= eh + 10;
+    }
     // Next steps and sign-off
     if (mort) {
       ensure(110); heading('Basis of this letter');
@@ -13800,7 +13858,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const safe = function (x) { return String(x == null ? '' : x).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/·/g, '\xB7').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
     const stamp = function (v) { return v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '') : ''; };
     const dayOf = function (v) { return v ? new Date(String(v).length === 10 ? v + 'T12:00:00Z' : v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }) : ''; };
-    const wrap = function (text, font, size, width) { const out = []; safe(text).split('\n').forEach(function (para) { let cur = ''; para.split(/\s+/).forEach(function (w) { const tt = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(tt, size) > width && cur) { out.push(cur); cur = w; } else cur = tt; }); out.push(cur); }); return out; };
+    const wrap = function (text, font, size, width) { return pdfWrap(safe(text), font, size, width); };
+    // The font size (from `size` down to `min`) at which `t` takes at most `max` lines of `width`, and those lines.
+    const fitLines = function (t, font, size, width, max, min) { let s = size, ls = wrap(t, font, s, width); while (ls.length > max && s > min) { s -= 0.25; ls = wrap(t, font, s, width); } return { size: s, lines: ls.length > max ? pdfWrap(safe(t), font, s, width, max) : ls }; };
     let page, y, sect = '', secNo = 0; const pages = [];
     const text = function (s, x, yy, size, font, color) { page.drawText(safe(s), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
     const right = function (s, xr, yy, size, font, color) { text(s, xr - (font || F).widthOfTextAtSize(safe(s), size), yy, size, font, color); };
@@ -13837,7 +13897,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       lay.forEach(function (r, k) {
         if (yy - r.h < 76) { y = yy; newPage(); top = y; rr(M, top, CW, Math.min(lay.slice(k).reduce(function (a, q) { return a + q.h; }, 0) + 12, y - 76), 10, C.white, C.line); yy = top - 12; }
         r.pair.forEach(function (c, j) { const x = M + 14 + (j ? colW + 8 : 0); text(String(c[0]).toUpperCase(), x, yy, 6.4, B, C.soft); r.ls[j].forEach(function (ln, q) { text(ln, x, yy - 12 - q * 12.4, 9.4, c[3] === 'mono' ? MONO : F, C.ink); }); });
-        yy -= r.h; if (k < lay.length - 1) page.drawLine({ start: { x: M + 14, y: yy + 5 }, end: { x: W - M - 14, y: yy + 5 }, thickness: 0.4, color: C.line });
+        yy -= r.h; if (k < lay.length - 1) page.drawLine({ start: { x: M + 14, y: yy + 11 }, end: { x: W - M - 14, y: yy + 11 }, thickness: 0.4, color: C.line });   // midway between the last value and the next label
       });
       y = yy - 10;
     };
@@ -13860,17 +13920,24 @@ document.querySelectorAll('.lcu').forEach(function(box){
     rr(M, y + 6, CW, 150, 14, C.navy);
     text('LANDLORD TERMS OF BUSINESS', M + 22, y - 18, 8, B, hex('FFB4B7'));
     text('Agreement for', M + 22, y - 44, 22, B, C.white);
-    wrap(t.property_address, B, 15, CW - 44).slice(0, 2).forEach(function (ln, i) { text(ln, M + 22, y - 66 - i * 18, 15, B, C.white); });
+    const ha = fitLines(t.property_address, B, 15, CW - 44, 2, 10); ha.lines.forEach(function (ln, i) { text(ln, M + 22, y - 66 - i * 18, ha.size, B, C.white); });
     text('Reference ' + ref + '   \xB7   Document ID ' + docId, M + 22, y - 112, 8, F, C.slate);
     let px = M + 22; px += pill(signed ? 'E-SIGNED ' + dayOf(t.signed_at).toUpperCase() : t.status === 'cancelled' ? 'CANCELLED' : 'AWAITING SIGNATURE', px, y - 136, signed ? C.green : C.amber, signed ? C.greenBg : C.amberBg) + 6;
     if (signed) pill(d.start_now ? 'START WORK NOW' : 'WAIT 14 DAYS', px, y - 136, C.blue, C.blueBg);
     y -= 166;
     // Parties
-    const half = (CW - 12) / 2, ph = 92;
-    [['Agent', 'Residential Realtors', ['Trading name of Estallion Investments Limited', safe(INVOICE.address || '28-30 Harper Road, London, SE1 6AD'), 'Registered in England No. ' + (INVOICE.companyNo || '08760284'), 'T 0207 096 8131 \xB7 info@residentialrealtors.co.uk']],
-      ['Landlord', t.landlord_name || dt.l1_name || '', [dt.corr_address ? dt.corr_address.replace(/\n/g, ', ') : '', [t.landlord_email || dt.l1_email, t.landlord_phone || dt.l1_phone].filter(Boolean).join(' \xB7 '), dt.l2_name ? 'With ' + dt.l2_name : '']]].forEach(function (c, i) {
-      const x = M + i * (half + 12); rr(x, y, half, ph, 10, C.white, C.line); text(c[0].toUpperCase(), x + 14, y - 18, 6.6, B, C.soft); text(c[1], x + 14, y - 34, 11, B, C.ink);
-      c[2].filter(Boolean).slice(0, 4).forEach(function (l, j) { text(wrap(l, F, 8, half - 28)[0], x + 14, y - 50 - j * 11, 8, F, C.soft); });
+    const half = (CW - 12) / 2;
+    const partyCards = [['Agent', 'Residential Realtors', ['Trading name of Estallion Investments Limited', safe(INVOICE.address || '28-30 Harper Road, London, SE1 6AD'), 'Registered in England No. ' + (INVOICE.companyNo || '08760284'), 'T 0207 096 8131 \xB7 info@residentialrealtors.co.uk']],
+      ['Landlord', t.landlord_name || dt.l1_name || '', [dt.corr_address ? dt.corr_address.replace(/\n/g, ', ') : '', [t.landlord_email || dt.l1_email, t.landlord_phone || dt.l1_phone].filter(Boolean).join(' \xB7 '), dt.l2_name ? 'With ' + dt.l2_name : '']]].map(function (c) {
+      // The name and every detail wrap inside the card (nothing cut off) and both cards grow to the taller one.
+      return { tag: c[0], name: wrap(c[1], B, 11, half - 28), lines: [].concat.apply([], c[2].filter(Boolean).slice(0, 4).map(function (l) { return wrap(l, F, 8, half - 28); })) };
+    });
+    const ph = Math.max.apply(null, [92].concat(partyCards.map(function (c) { return 50 + (c.name.length - 1) * 14 + (c.lines.length - 1) * 11 + 9; })));
+    ensure(ph + 10);
+    partyCards.forEach(function (c, i) {
+      const x = M + i * (half + 12), dn = (c.name.length - 1) * 14; rr(x, y, half, ph, 10, C.white, C.line); text(c.tag.toUpperCase(), x + 14, y - 18, 6.6, B, C.soft);
+      c.name.forEach(function (ln, j) { text(ln, x + 14, y - 34 - j * 14, 11, B, C.ink); });
+      c.lines.forEach(function (l, j) { text(l, x + 14, y - 50 - dn - j * 11, 8, F, C.soft); });
     });
     y -= ph + 20;
     band('Agreed fees', 'The fees agreed for this property. They replace our standard scale of fees.');
@@ -13925,8 +13992,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
       band('Bank details', 'Where rent and deposit monies are paid.');
       const mask = function (v) { v = String(v || ''); return opts.landlord && v.length > 4 ? '••••' .replace(/./g, '*') + v.slice(-4) : v; };
       ensure(96); rr(M, y + 2, CW, 86, 12, C.navy);
-      text('BANK', M + 18, y - 16, 6.6, B, C.slate); text(dt.bank_name === 'Other' || dt.bank_type === 'intl' ? (dt.bank_other || '') : (dt.bank_name || ''), M + 18, y - 30, 12, B, C.white);
-      text('ACCOUNT HOLDER', M + CW / 2, y - 16, 6.6, B, C.slate); text(dt.bank_account_name || '', M + CW / 2, y - 30, 11, B, C.white);
+      // A long bank or account-holder name gets smaller, then takes two lines, within its own half of the box.
+      const bankLn = function (t, size, x) { const fl = fitLines(t, B, pdfFit(safe(t), B, size, CW / 2 - 30, 9), CW / 2 - 30, 2, 7); fl.lines.forEach(function (ln, k) { text(ln, x, y - (fl.lines.length > 1 ? 29 : 30) - k * (fl.size + 1), fl.size, B, C.white); }); };
+      text('BANK', M + 18, y - 16, 6.6, B, C.slate); bankLn(dt.bank_name === 'Other' || dt.bank_type === 'intl' ? (dt.bank_other || '') : (dt.bank_name || ''), 12, M + 18);
+      text('ACCOUNT HOLDER', M + CW / 2, y - 16, 6.6, B, C.slate); bankLn(dt.bank_account_name || '', 11, M + CW / 2);
       if (dt.bank_type === 'intl') { text('IBAN', M + 18, y - 52, 6.6, B, C.slate); text(mask(dt.bank_iban), M + 18, y - 68, 11, MONO, C.white); text('SWIFT / BIC', M + CW / 2, y - 52, 6.6, B, C.slate); text(dt.bank_swift || '', M + CW / 2, y - 68, 11, MONO, C.white); }
       else { text('SORT CODE', M + 18, y - 52, 6.6, B, C.slate); text(opts.landlord ? '**-**-' + String(dt.bank_sort || '').replace(/\D/g, '').slice(-2) : (dt.bank_sort || ''), M + 18, y - 68, 12, MONO, C.white); text('ACCOUNT NUMBER', M + CW / 2, y - 52, 6.6, B, C.slate); text(mask(dt.bank_account), M + CW / 2, y - 68, 12, MONO, C.white); }
       y -= 98;
@@ -13968,12 +14037,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
       band('14-day cancellation period');
       ensure(40); rr(M, y + 2, CW, 32, 8, d.start_now ? C.blueBg : C.panel); wrap(d.start_now ? 'The landlord asked us to start work, including marketing, straight away - before the end of the 14-day cancellation period.' : 'The landlord asked us not to start work until the 14-day cancellation period has ended.', B, 8.6, CW - 24).slice(0, 2).forEach(function (ln, i) { text(ln, M + 12, y - 12 - i * 11, 8.6, B, d.start_now ? C.blue : C.ink); }); y -= 44;
       band('Electronic signature');
-      ensure(130); const sh = 118; rr(M, y, CW, sh, 12, C.white, C.line); const sw = CW * 0.5;
-      rr(M + 10, y - 10, sw - 20, sh - 20, 8, C.panel);
+      const sw = CW * 0.5, sx = M + sw + 8;
+      // The details on the right wrap within their column (each row moves down to make room); the box grows to fit.
+      const sigRows = [['Signed by', d.signature], ['Date and time', stamp(t.signed_at) + ' UK'], ['Method', 'Drawn on screen'], ['IP address', au.ip || '-'], ['Document ID', docId]].map(function (r) { return [r[0], wrap(String(r[1] || ''), r[0] === 'Document ID' ? MONO : F, 8.8, W - M - sx - 4), r[0] === 'Document ID']; });
+      let sigLast = 18; sigRows.forEach(function (r, i) { if (i) sigLast += 20 + (sigRows[i - 1][1].length - 1) * 10.5; r.top = sigLast; });
+      const sh = Math.max(118, sigLast + 10 + (sigRows[sigRows.length - 1][1].length - 1) * 10.5 + 10);
+      ensure(sh + 12); rr(M, y, CW, sh, 12, C.white, C.line);
+      rr(M + 10, y - 10, sw - 20, 98, 8, C.panel);
       if (sig) { try { const im = await pdf.embedPng(sig.data); const h = 56, w = Math.min(sw - 50, im.width * h / im.height); page.drawImage(im, { x: M + 10 + (sw - 20 - w) / 2, y: y - 24 - h, width: w, height: h }); } catch (e) {} }
-      page.drawLine({ start: { x: M + 24, y: y - 86 }, end: { x: M + sw - 24, y: y - 86 }, thickness: 0.6, color: C.faint }); text(d.signature || '', M + 24, y - 99, 8.6, B, C.ink);
-      const sx = M + sw + 8;
-      [['Signed by', d.signature], ['Date and time', stamp(t.signed_at) + ' UK'], ['Method', 'Drawn on screen'], ['IP address', au.ip || '-'], ['Document ID', docId]].forEach(function (r, i) { text(String(r[0]).toUpperCase(), sx, y - 18 - i * 20, 6.2, B, C.soft); text(String(r[1] || '').slice(0, 40), sx, y - 28 - i * 20, 8.8, r[0] === 'Document ID' ? MONO : F, C.ink); });
+      page.drawLine({ start: { x: M + 24, y: y - 86 }, end: { x: M + sw - 24, y: y - 86 }, thickness: 0.6, color: C.faint });
+      const pn = safe(d.signature || ''), pns = pdfFit(pn, B, 8.6, sw - 48, 6); text(pdfWrap(pn, B, pns, sw - 48, 1)[0], M + 24, y - 99, pns, B, C.ink);
+      sigRows.forEach(function (r) { text(String(r[0]).toUpperCase(), sx, y - r.top, 6.2, B, C.soft); r[1].forEach(function (ln, j) { text(ln, sx, y - r.top - 10 - j * 10.5, 8.8, r[2] ? MONO : F, C.ink); }); });
       y -= sh + 10; text('Signed electronically - legally binding in England and Wales (Electronic Communications Act 2000). See the audit trail.', M, y, 7.4, F, C.soft); y -= 14;
     } else para('Not signed yet.', { color: C.amber, bold: true });
 
@@ -15160,20 +15234,23 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const safe = function (x) { return String(x == null ? '' : x).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/·/g, '\xB7').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
     const cash = function (v) { return '\xA3' + (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
     const stamp = function (v) { return v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '') : ''; };
-    const wrap = function (s, font, size, width) { const out = []; safe(s).split('\n').forEach(function (para) { let cur = ''; para.split(/\s+/).forEach(function (w) { const tt = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(tt, size) > width && cur) { out.push(cur); cur = w; } else cur = tt; }); out.push(cur); }); return out; };
+    const wrap = function (s, font, size, width) { return pdfWrap(safe(s), font, size, width); };
+    // The font size (from `size` down to `min`) at which `t` takes at most `max` lines of `width`, and those lines.
+    const fitLines = function (t, font, size, width, max, min) { let s = size, ls = wrap(t, font, s, width); while (ls.length > max && s > min) { s -= 0.25; ls = wrap(t, font, s, width); } return { size: s, lines: ls.length > max ? pdfWrap(safe(t), font, s, width, max) : ls }; };
     let page, y; const pages = [];
     const text = function (s, x, yy, size, font, color) { page.drawText(safe(s), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
     const newPage = function () { page = pdf.addPage([W, H]); pages.push(page); y = H - 50; };
     const ensure = function (h) { if (y - h < 70) newPage(); };
     const para = function (s, size, font, color, indent) { wrap(s, font || F, size || 9.4, CW - (indent || 0)).forEach(function (ln) { ensure(14); text(ln, M + (indent || 0), y, size || 9.4, font || F, color || C.ink); y -= (size || 9.4) + 4; }); };
     const head = function (s) { ensure(34); y -= 8; text(s.toUpperCase(), M, y, 8.5, B, C.red); y -= 6; page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.6, color: C.line }); y -= 14; };
-    const grid = function (rows) { rows = rows.filter(function (r) { return r[1]; }); for (let i = 0; i < rows.length; i += 2) { ensure(30); [rows[i], rows[i + 1]].forEach(function (r, k) { if (!r) return; const x = M + k * CW / 2; text(r[0].toUpperCase(), x, y, 6.8, B, C.soft); wrap(r[1], B, 10, CW / 2 - 14).slice(0, 2).forEach(function (ln, j) { text(ln, x, y - 13 - j * 12, 10, B, C.ink); }); }); y -= 34; } };
+    // Two cells to a row; every line of a value is shown and the row is as tall as its longest value.
+    const grid = function (rows) { rows = rows.filter(function (r) { return r[1]; }); for (let i = 0; i < rows.length; i += 2) { const pair = [rows[i], rows[i + 1]], ls = pair.map(function (r) { return r ? wrap(r[1], B, 10, CW / 2 - 14) : []; }), h = 22 + Math.max(ls[0].length, ls[1].length) * 12; ensure(h - 4); pair.forEach(function (r, k) { if (!r) return; const x = M + k * CW / 2; text(r[0].toUpperCase(), x, y, 6.8, B, C.soft); ls[k].forEach(function (ln, j) { text(ln, x, y - 13 - j * 12, 10, B, C.ink); }); }); y -= h; } };
     newPage();
     // Navy header band.
     page.drawRectangle({ x: 0, y: H - 128, width: W, height: 128, color: C.navy });
     text('RESIDENTIAL REALTORS', M, H - 44, 9, B, C.slate);
     text('Pre-Viewing Reservation (PVR)', M, H - 74, 22, B, C.white);
-    text(safe(t.property_address).slice(0, 90), M, H - 96, 10.5, F, C.slate);
+    const ha = fitLines(t.property_address, F, 10.5, CW, 2, 8); ha.lines.forEach(function (ln, i) { text(ln, M, H - 96 - i * 13, ha.size, F, C.slate); });
     const pill = t.signed_at ? 'SIGNED' : 'NOT SIGNED YET', pw = B.widthOfTextAtSize(pill, 8) + 18;
     page.drawRectangle({ x: W - M - pw, y: H - 52, width: pw, height: 18, color: t.signed_at ? C.greenBg : C.amberBg });
     text(pill, W - M - pw + 9, H - 46, 8, B, t.signed_at ? C.green : C.amber);
@@ -15190,7 +15267,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     ensure(120); y -= 6;
     page.drawRectangle({ x: M, y: y - 96, width: CW, height: 96, color: C.panel, borderColor: C.line, borderWidth: 0.6 });
     if (t.signature) { try { const img = await pdf.embedPng(t.signature), k = Math.min(200 / img.width, 60 / img.height); page.drawImage(img, { x: M + 14, y: y - 76, width: img.width * k, height: img.height * k }); } catch (e) {} }
-    text('SIGNED BY', M + CW / 2, y - 22, 6.8, B, C.soft); text(d.signature || (t.signed_at ? t.name : 'Not signed yet'), M + CW / 2, y - 36, 11, B, C.ink);
+    const sb = d.signature || (t.signed_at ? t.name : 'Not signed yet'), sbl = fitLines(sb, B, pdfFit(safe(sb), B, 11, CW / 2 - 14, 8.5), CW / 2 - 14, 2, 7);
+    text('SIGNED BY', M + CW / 2, y - 22, 6.8, B, C.soft); sbl.lines.forEach(function (ln, k) { text(ln, M + CW / 2, y - 36 - k * (sbl.size + 2), sbl.size, B, C.ink); });
     text('DATE AND TIME (UK)', M + CW / 2, y - 56, 6.8, B, C.soft); text(t.signed_at ? stamp(t.signed_at) : '-', M + CW / 2, y - 70, 10, B, C.ink);
     y -= 112;
     head('Status');
