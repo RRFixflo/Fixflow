@@ -165,6 +165,17 @@ module.exports = function (app, opts) {
     if (/completed|busy|failed|no-answer|canceled/.test(String(req.body.CallStatus || ''))) finish(String(req.body.CallSid || '').slice(0, 64)).catch(function (e) { console.error('Phone answering: saving the call', e.message); });
   });
 
+  function ordinal(n) { const t = n % 100, u = n % 10; return n + (t >= 11 && t <= 13 ? 'th' : u === 1 ? 'st' : u === 2 ? 'nd' : u === 3 ? 'rd' : 'th'); }
+  // The first record on file with this number (last 10 digits): landlord, then tenant, contractor, earlier named enquiry.
+  async function knownCaller(p, tail) {
+    if (String(tail || '').length < 9) return null;
+    const T = function (col) { return "right(regexp_replace(coalesce(" + col + ", ''), '\\D', '', 'g'), 10) = $1"; };
+    const one = async function (sql, kind, label) { try { const r = (await p.query(sql, [tail])).rows[0]; return r && r.name ? { kind: kind, label: label, name: String(r.name).slice(0, 120), where: String(r.addr || '').slice(0, 200) } : null; } catch (e) { return null; } };
+    return (await one('SELECT name, address AS addr FROM landlords WHERE ' + T('phone') + ' ORDER BY id DESC LIMIT 1', 'landlord', 'Landlord')) ||
+      (await one('SELECT t.name, pt.address AS addr FROM tenants t LEFT JOIN property_tenants pt ON pt.tenant_id = t.id WHERE t.deleted_at IS NULL AND ' + T('t.phone') + ' ORDER BY (pt.moved_out_at IS NULL) DESC, pt.created_at DESC NULLS LAST LIMIT 1', 'tenant', 'Tenant')) ||
+      (await one('SELECT name, trade AS addr FROM contractors WHERE ' + T('phone') + ' ORDER BY active DESC, id DESC LIMIT 1', 'contractor', 'Contractor')) ||
+      (await one("SELECT name, address AS addr FROM valuation_requests WHERE " + T('phone') + " AND name NOT LIKE 'Caller %' ORDER BY id DESC LIMIT 1", 'applicant', 'Earlier enquiry'));
+  }
   async function finish(sid) {
     const p = await pool(); if (!p || !sid) return;
     const call = (await p.query('UPDATE voice_calls SET ended_at = now() WHERE sid = $1 AND ended_at IS NULL RETURNING *', [sid])).rows[0]; if (!call) return;   // only once, even if the hang-up and the last turn arrive together
@@ -174,13 +185,18 @@ module.exports = function (app, opts) {
     if (got) ['name', 'email', 'phone', 'about', 'address', 'category', 'adults', 'children', 'move_date', 'income', 'guarantor', 'summary'].forEach(function (k) { if (got[k]) info[k] = String(got[k]).slice(0, 500); });
     if (got && got.urgent) info.urgent = true;
     const phone = String(info.phone || '').replace(/[^\d+ ]/g, '').trim() || String(call.from_no || '').replace(/^\+44/, '0'), email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(info.email || '').replace(/\s+/g, '')) ? String(info.email).replace(/\s+/g, '').toLowerCase() : null;
-    const name = String(info.name || '').trim() || 'Caller ' + (String(call.from_no || '').replace(/^\+44/, '0') || '(number withheld)');
+    // Who it is, if the number is already on file (landlord, tenant, contractor, earlier applicant), and how many times
+    // this number has rung the assistant — "5th call" tells staff it's worth calling back first.
+    const tail = String(call.from_no || '').replace(/\D/g, '').slice(-10), known = await knownCaller(p, tail);
+    const prev = tail.length >= 9 ? ((await p.query("SELECT count(*)::int AS n FROM valuation_requests WHERE data->>'kind' = 'call' AND (right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $1 OR right(regexp_replace(coalesce(data->>'caller_id', ''), '\\D', '', 'g'), 10) = $1)", [tail]).catch(function () { return { rows: [{ n: 0 }] }; })).rows[0] || {}).n || 0 : 0;
+    const name = String(info.name || '').trim() || (known && known.name) || 'Caller ' + (String(call.from_no || '').replace(/^\+44/, '0') || '(number withheld)');
     const data = { kind: 'call', message: info.summary || info.about || (said.length ? 'Caller said: ' + said.map(function (t) { return t.text; }).join(' / ').slice(0, 600) : 'Rang and didn’t leave a message.'),
-      about: info.about || '', category: info.category || '', move: info.move_date || '', income: info.income || '', guarantor: info.guarantor || '', people: info.adults ? info.adults + ' adult' + (info.adults === '1' ? '' : 's') + (info.children && info.children !== '0' ? ', ' + info.children + ' child' + (info.children === '1' ? '' : 'ren') : ', no children') : '', urgent: !!info.urgent, caller_id: call.from_no || '', transcript: (call.turns || []).map(function (t) { return (t.role === 'assistant' ? 'Assistant: ' : 'Caller: ') + t.text; }).join('\n').slice(0, 8000) };
+      about: info.about || '', category: info.category || '', move: info.move_date || '', income: info.income || '', guarantor: info.guarantor || '', people: info.adults ? info.adults + ' adult' + (info.adults === '1' ? '' : 's') + (info.children && info.children !== '0' ? ', ' + info.children + ' child' + (info.children === '1' ? '' : 'ren') : ', no children') : '', urgent: !!info.urgent, caller_id: call.from_no || '', known: known || undefined, call_no: prev + 1, transcript: (call.turns || []).map(function (t) { return (t.role === 'assistant' ? 'Assistant: ' : 'Caller: ') + t.text; }).join('\n').slice(0, 8000) };
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name.slice(0, 120), email, phone || null, (info.address || '(phone call)').slice(0, 300), JSON.stringify(data)]);
     await p.query('UPDATE voice_calls SET lead_id = $2 WHERE sid = $1', [sid, r.rows[0].id]);
-    const title = (data.urgent ? '🚨 Urgent phone message: ' : '📞 Phone message: ') + name, line = (phone || email || 'no number') + ' — ' + data.message;
-    const text = function (link) { return 'Someone rang the office when nobody was free to answer and left a message with the phone assistant.\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + (email || '—') + (info.address ? '\nProperty: ' + info.address : '') + (data.people ? '\nMoving in: ' + data.people : '') + (data.move ? '\nMove-in date: ' + data.move : '') + (data.income ? '\nRent paid by: ' + data.income : '') + (data.guarantor ? '\nUK guarantor: ' + data.guarantor : '') + (data.urgent ? '\nMarked URGENT' : '') + '\n\nWhat it’s about:\n' + data.message + '\n\nThe full conversation is in Website leads:\n' + link; };
+    const whoTxt = known ? known.label + (known.where ? ' at ' + known.where : '') : '', nth = data.call_no > 1 ? ordinal(data.call_no) + ' call from this number' : '';
+    const title = (data.urgent ? '🚨 Urgent phone message: ' : '📞 Phone message: ') + name + (known && !info.name ? ' (' + known.label + ')' : '') + (nth ? ' · ' + nth : ''), line = (phone || email || 'no number') + (whoTxt ? ' — ' + whoTxt : '') + ' — ' + data.message;
+    const text = function (link) { return 'Someone rang the office when nobody was free to answer and left a message with the phone assistant.\n\nName: ' + name + '\nPhone: ' + (phone || '—') + (whoTxt ? '\nOn file as: ' + (known.name ? known.name + ' — ' : '') + whoTxt : '') + (nth ? '\nThis is the ' + nth : '') + '\nEmail: ' + (email || '—') + (info.address ? '\nProperty: ' + info.address : '') + (data.people ? '\nMoving in: ' + data.people : '') + (data.move ? '\nMove-in date: ' + data.move : '') + (data.income ? '\nRent paid by: ' + data.income : '') + (data.guarantor ? '\nUK guarantor: ' + data.guarantor : '') + (data.urgent ? '\nMarked URGENT' : '') + '\n\nWhat it’s about:\n' + data.message + '\n\nThe full conversation is in Website leads:\n' + link; };
     // Repairs go to the owner only (as with online repair reports); everything else to all staff. A call that
     // sounds like a repair counts as one even if the assistant filed it under another heading.
     const heard = [info.about, info.summary, data.message].concat(said.map(function (t) { return t.text; })).join(' ').toLowerCase();

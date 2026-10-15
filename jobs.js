@@ -12823,7 +12823,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     d = d || {};
     if (d.appl === true) return true; if (d.appl === false) return false;   // moved by staff (Landlord enquiries ⇄ Applicants)
     return d.kind === 'viewing' || d.kind === 'rightmove' || d.kind === 'lead' || ((d.kind === 'enquiry' || d.kind === 'contact') && /^(looking to rent|buying|applicant|buyer)$/i.test(String(d.topic || ''))) ||
-      (d.kind === 'call' && /^(renting|buying)$/.test(String(d.category || '')));
+      (d.kind === 'call' && !/^(repair|letting|selling|valuation|certificate)$/.test(String(d.category || '')) && !(d.known && d.known.kind === 'landlord'));   // phone calls: Applicants → 📞 Phone calls, unless landlord business or a repair
   }
   // One person, several enquiries: applicant leads sharing an email address or the last 10 digits of a phone number
   // are the same applicant — one owner, one 24-hour clock.
@@ -12933,13 +12933,24 @@ document.querySelectorAll('.lcu').forEach(function(box){
         if (ph.length >= 9 && !byPhone[ph]) byPhone[ph] = e; if (em && !byEmail[em]) byEmail[em] = e; if (n.split(' ').length >= 2 && !byName[n]) byName[n] = e;
       });
       items.forEach(function (x) {
-        if (!isApplicant(x.data)) return;
+        if (!isApplicant(x.data) && !(x.data && x.data.kind === 'call')) return;
         const ph = junkTail(x.phone), em = String(x.email || '').trim().toLowerCase(), n = nm(x.name);
         const hit = (ph.length >= 9 && byPhone[ph] && Object.assign({ how: 'phone number' }, byPhone[ph])) || (em && byEmail[em] && Object.assign({ how: 'email' }, byEmail[em])) || (n.split(' ').length >= 2 && byName[n] && Object.assign({ how: 'name' }, byName[n]));
         if (hit) tenantOf[x.id] = hit;
       });
     } catch (e) { console.error('Tenant match failed:', e.message); }
-    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, viewings: vws, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req), junk: await junkList(p), tenantOf: tenantOf });
+    // Phone calls from a number we already have as a landlord or contractor (tenants are in tenantOf).
+    const knownOf = {};
+    try {
+      const calls = items.filter(function (x) { return x.data && x.data.kind === 'call'; });
+      if (calls.length) {
+        const by = {};
+        (await p.query("SELECT id, name, phone, address AS addr, 'landlord' AS kind FROM landlords WHERE coalesce(phone, '') <> '' UNION ALL SELECT id, name, phone, trade AS addr, 'contractor' AS kind FROM contractors WHERE coalesce(phone, '') <> ''")).rows
+          .forEach(function (r) { const t = junkTail(r.phone); if (t.length >= 9 && (!by[t] || (by[t].kind !== 'landlord' && r.kind === 'landlord'))) by[t] = { kind: r.kind, label: r.kind === 'landlord' ? 'Landlord' : 'Contractor', id: r.id, name: r.name, where: r.addr || '' }; });
+        calls.forEach(function (x) { const t = junkTail(x.phone || x.data.caller_id); if (by[t]) knownOf[x.id] = by[t]; });
+      }
+    } catch (e) { console.error('Caller match failed:', e.message); }
+    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, viewings: vws, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req), junk: await junkList(p), tenantOf: tenantOf, knownOf: knownOf });
   }));
   app.post('/api/admin/crm/note', withDb(async function (p, req, res) {
     const b = req.body || {}, ref = String(b.ref || ''), note = str(b.note, 4000);
