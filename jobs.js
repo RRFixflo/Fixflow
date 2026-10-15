@@ -1849,7 +1849,9 @@ module.exports = function mountJobs(app, opts) {
     try { const p = await db(); if (p) {
       const m = (await p.query("SELECT value FROM app_settings WHERE key = 'mail_mute'")).rows[0];
       mailCache.mute = (m && m.value && Array.isArray(m.value.kinds)) ? m.value.kinds : [];
-      mailCache.staff = (await p.query("SELECT lower(trim(email)) AS e FROM staff_users WHERE coalesce(email, '') <> ''")).rows.map(function (r) { return r.e; });
+      const su = (await p.query("SELECT id, lower(trim(email)) AS e, disabled_at FROM staff_users WHERE coalesce(email, '') <> ''")).rows;
+      mailCache.staff = su.map(function (r) { return r.e; });
+      mailCache.byId = {}; su.forEach(function (r) { if (!r.disabled_at) mailCache.byId[r.id] = r.e; });
     } } catch (e) {}
     return mailCache;
   }
@@ -1864,9 +1866,12 @@ module.exports = function mountJobs(app, opts) {
     const internal = all.length > 0 && all.every(function (a) { return mailOurs(a, c); }), auto = !actor.getStore();
     if (internal && auto && c.mute.indexOf(kind) !== -1) { mailLog(m, kind, all, true, true, 'off'); return { ok: true, muted: true }; }
     // The office Outlook mailbox first (when connected); Resend if it isn't, or if Microsoft refuses.
-    // Staff-sent emails go from that person's own Outlook when they've connected it (outlook.js mailboxFor), else info@.
-    const sender = actor.getStore();
-    let r = outlookMail ? await outlookMail.send(m, sender ? (sender.id ? 'u' + sender.id : 'owner') : null).catch(function (e) { return { ok: false, error: e.message }; }) : null, via = 'outlook';
+    // Everything goes from info@; an email a member of staff sends to someone outside copies them in (the owner asked).
+    const sender = actor.getStore(), me = sender && sender.id && (c.byId || {})[sender.id];
+    // (A hidden Bcc copy to them, as the email window adds, becomes that visible Cc.)
+    const low = function (l) { return [].concat(l || []).map(function (a) { return String(a || '').trim().toLowerCase(); }); };
+    if (me && !internal && low(m.to).concat(low(m.cc)).indexOf(me) === -1) m = Object.assign({}, m, { cc: [].concat(m.cc || [], [me]), bcc: [].concat(m.bcc || []).filter(function (a) { return String(a || '').trim().toLowerCase() !== me; }) });
+    let r = outlookMail ? await outlookMail.send(m, null).catch(function (e) { return { ok: false, error: e.message }; }) : null, via = 'outlook';
     if (!r || !r.ok) { r = await opts.sendEmail(m); via = 'resend'; }
     const err = r && !r.ok ? String(r.error || 'failed') : '', limit = /HTTP 429|quota|daily|limit/i.test(err);
     mailLog(m, kind, all, internal, auto, r && r.ok ? 'sent' : limit ? 'limit' : 'failed', err, via);
