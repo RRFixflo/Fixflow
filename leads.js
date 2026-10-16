@@ -173,9 +173,21 @@ module.exports = function (app, opts) {
   async function resolveRefs() {
     try {
       const p = await opts.db(); if (!p) return;
-      const rows = (await p.query("SELECT id, address, data FROM valuation_requests WHERE address LIKE 'Rightmove ref %' AND created_at > now() - interval '120 days' ORDER BY id DESC LIMIT 200")).rows;
-      if (!rows.length) return;
       const av = (await p.query("SELECT address, gnomen_id, rm_id, dream_rm FROM available_props WHERE address <> '' ORDER BY (status = 'available') DESC, updated_at DESC")).rows;
+      // Remember every reference the available list and our Rightmove adverts know, so it can still be found
+      // after the property is let, withdrawn or deleted (listings.js listing_refs).
+      if (opts.rememberRef) {
+        if (opts.refsReady) await opts.refsReady();
+        for (const a of av.slice().reverse()) {
+          if (a.gnomen_id) await opts.rememberRef(a.gnomen_id, { gid: a.gnomen_id, address: a.address }, 'available');
+          if (a.rm_id) await opts.rememberRef(a.rm_id, { gid: a.gnomen_id || '', address: a.address }, 'available');
+          if (Array.isArray(a.dream_rm)) for (const d of a.dream_rm) await opts.rememberRef(d, { address: a.address }, 'available');
+        }
+        const rl = (await p.query("SELECT key, value FROM app_settings WHERE key IN ('rightmove_list', 'rightmove_sales')")).rows;
+        for (const c of rl) for (const x of (c.value && c.value.items) || []) if (x && x.id && x.address) await opts.rememberRef(x.id, { address: x.address, url: x.url || '', kind: c.key === 'rightmove_sales' ? 'sale' : 'let' }, 'rightmove');
+      }
+      const rows = (await p.query("SELECT id, address, data FROM valuation_requests WHERE address LIKE 'Rightmove ref %' ORDER BY id DESC LIMIT 300")).rows;
+      if (!rows.length) return;
       for (const r of rows) {
         const d = r.data || {}, ref = str(d.ref || r.address.replace(/^Rightmove ref\s*/i, ''), 60);
         const m = (String(d.url || '') + ' ' + String(d.deeplink || '')).match(/rightmove\.co\.uk\/properties\/(\d+)/), rmNo = m ? m[1] : '';

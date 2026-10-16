@@ -369,8 +369,42 @@ module.exports = function (app, opts) {
   }
   async function saveHidden(p) { await p.query("INSERT INTO app_settings (key, value) VALUES ('web_hidden', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(hidden)]); }
   const isHidden = function (id) { return hidden.items.some(function (h) { return String(h.id) === String(id); }); };
+  // Every Gnomen / Rightmove number we have ever listed, with its address (table listing_refs) — so a
+  // Rightmove lead for a home that has since come off the website still shows which property it was.
+  const refBook = new Map(); let refLoaded = false;
+  async function refDb() {
+    const p = opts.db && await opts.db(); if (!p) return null;
+    if (!refLoaded) {
+      await p.query('CREATE TABLE IF NOT EXISTS listing_refs (ref TEXT PRIMARY KEY, gid TEXT, address TEXT NOT NULL, url TEXT, kind TEXT, src TEXT, first_seen TIMESTAMPTZ NOT NULL DEFAULT now(), last_seen TIMESTAMPTZ NOT NULL DEFAULT now())');
+      (await p.query('SELECT ref, gid, address, url, kind, src FROM listing_refs')).rows.forEach(function (r) { refBook.set(r.ref, { gid: r.gid || '', address: r.address, url: r.url || '', kind: r.kind || '', src: r.src || '' }); });
+      refLoaded = true;
+    }
+    return p;
+  }
+  async function rememberRef(ref, rec, src) {
+    ref = String(ref || '').trim(); const address = String(rec && rec.address || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (!ref || !address || ref.length > 40) return;
+    const p = await refDb(); if (!p) return;
+    const old = refBook.get(ref), nw = { gid: String(rec.gid || (old && old.gid) || ''), address: address, url: String(rec.url || (old && old.url) || ''), kind: String(rec.kind || (old && old.kind) || '') };
+    if (old && old.address === nw.address && old.gid === nw.gid && old.url === nw.url && old.kind === nw.kind) return;
+    // A website listing's own address wins over one learnt elsewhere (available list, Rightmove adverts).
+    if (old && src !== 'website' && old.src === 'website') return;
+    refBook.set(ref, Object.assign(nw, { src: src }));
+    await p.query('INSERT INTO listing_refs (ref, gid, address, url, kind, src) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (ref) DO UPDATE SET gid = $2, address = $3, url = $4, kind = $5, src = $6, last_seen = now()', [ref, nw.gid, nw.address, nw.url, nw.kind, src || '']);
+  }
+  async function rememberListings() {
+    try {
+      const all = data.let.concat(data.sale);
+      for (const q of all) {
+        const rec = { gid: q.src ? '' : String(q.id), address: [q.where, q.postcode && String(q.where || '').indexOf(q.postcode) === -1 ? q.postcode : ''].filter(Boolean).join(', '), url: q.url ? opts.siteUrl + q.url : '', kind: q.kind };
+        await rememberRef(q.id, rec, 'website');
+        if (q.rmId) await rememberRef(q.rmId, rec, 'website');
+      }
+    } catch (e) { console.error('Listings: remembering references', e.message); }
+  }
   async function doRefresh() {
     if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
+    await rememberListings();
     await loadHidden();
     if (hidden.items.length) {
       const seen = {}, back = {}; let changed = false; offSite = {};
@@ -767,8 +801,13 @@ module.exports = function (app, opts) {
     findRef: function (ref) {
       ref = String(ref || '').trim(); if (!ref) return null;
       const p = data.let.concat(data.sale).filter(function (q) { return String(q.id) === ref || String(q.rmId || '') === ref; })[0];
-      return p ? { id: p.id, where: p.where || '', url: p.url ? opts.siteUrl + p.url : '', kind: p.kind } : null;
+      if (p) return { id: p.id, where: p.where || '', url: p.url ? opts.siteUrl + p.url : '', kind: p.kind };
+      // No longer on the website: what it was when we last listed it (no link — the page has gone).
+      const b = refBook.get(ref);
+      return b ? { id: b.gid || ref, where: b.address, url: '', kind: b.kind, gone: true } : null;
     },
+    rememberRef: function (ref, rec, src) { return rememberRef(ref, rec, src).catch(function (e) { console.error('Listings: remembering a reference', e.message); }); },
+    refsReady: function () { return refDb().catch(function () { return null; }); },
     // For checking other agents' Rightmove adverts against our own photos (rivals.js).
     rmTools: { RM: RM, UA: UA, dig: dig, pageJson: pageJson, abs: abs, isImg: isImg, fingerprint: fingerprint, hamming: hamming, branches: [BRANCH, SALES_BRANCH], detail: rmDetail, db: fpDb },
     photoDupes: function () {

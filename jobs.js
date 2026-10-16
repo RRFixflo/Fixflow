@@ -2493,7 +2493,7 @@ module.exports = function mountJobs(app, opts) {
   // Staff progress: per person, offer forms, landlord terms and pre-viewing reservations sent in a period —
   // each counted once per person sent to (by email, else phone, else name) — and how many got somewhere.
   app.get('/api/admin/staff-progress', withDb(async function (p, req, res) {
-    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    // Every login can see it (the owner asked staff to see how many viewings each person has done).
     const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null; };
     const to = day(req.query.to) || londonDay(), from = day(req.query.from) || to.slice(0, 8) + '01';
     const range = [from + ' 00:00 Europe/London', to + ' 23:59:59 Europe/London'];

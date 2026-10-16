@@ -668,7 +668,9 @@
   .mypw .mypw-show { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; margin: 2px 0 0; } .mypw-show input { width: 18px; height: 18px; margin: 0; }
   .mypw-err { background: var(--dk-bg-fdecec, #fdecec); color: var(--dk-fg-b42318, #b42318); border-radius: 10px; padding: 8px 10px; font-size: .86rem; font-weight: 600; margin: 6px 0 0; }
   .mypw-act { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
-  #mlModal { z-index: 60; }   /* the email window opens on top of other windows (e.g. Tell landlord) */
+  #mlModal { z-index: 60; }
+  .sp-modal { max-width: 980px; width: 100%; } .sp-mh { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; } .sp-mh b { font-size: 1.05rem; }
+  #spSlot .sp-box > .sp-h > b { display: none; }   /* the email window opens on top of other windows (e.g. Tell landlord) */
   .ml-tabs { display: flex; gap: 6px; } .ml-tabs button { border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); background: var(--panel, var(--dk-bg-fff, #fff)); border-radius: 10px; padding: 6px 10px; font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer; color: var(--ink-soft); } .ml-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; }
   .ml-look[hidden] { display: none; }
   .ml-look { width: 100%; height: 420px; overflow: auto; display: block; border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 12px; background: var(--dk-bg-f3f5f8, #f3f5f8); }
@@ -829,8 +831,20 @@
   .rs-m { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: .86rem; }
   .rs-tag { display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 999px; font-size: .72rem; font-weight: 600; }
   .rs-tag.dream { background: var(--dk-bg-fef0c7, #FEF0C7); color: var(--dk-fg-93370d, #93370D); } .rs-tag.none { background: var(--dk-bg-fee4e2, #FEE4E2); color: var(--dk-fg-b42318, #B42318); } .rs-tag.ours { background: var(--dk-bg-ecfdf3, #ECFDF3); color: var(--dk-fg-067647, #067647); }
-  .vo-wrap { display: flex; flex-direction: column; gap: 6px; } .vo-h { font-weight: 600; font-size: .88rem; }
-  .vo-t { padding: 7px 9px; border: 1px solid var(--line, #E4E7EC); border-radius: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .vo-wrap { display: flex; flex-direction: column; gap: 8px; } .vo-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-weight: 600; font-size: .9rem; } .vo-h small { font-weight: 400; color: var(--muted, #667085); font-size: .8rem; } .vo-h .vo-sel { margin-left: auto; font-weight: 500; font-size: .8rem; }
+  .vo-h .vo-sel .linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--blue, #175cd3); cursor: pointer; }
+  .vo-t { padding: 10px 12px; border: 1px solid var(--line, #E4E7EC); border-radius: 12px; background: var(--dk-bg-fff, #fff); display: flex; flex-direction: column; gap: 8px; }
+  .vo-t.vo-on { border-color: var(--dk-bd-b2ccff, #B2CCFF); background: var(--dk-bg-f5f8ff, #F5F8FF); }
+  label.vo-top, .vo-top { display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: flex-start !important; gap: 10px; min-width: 0; margin: 0 !important; text-align: left !important; font-weight: 400; cursor: pointer; } .vo-top input { flex: none; width: 18px !important; height: 18px; margin: 0; accent-color: var(--primary, #1F2A44); cursor: pointer; }
+  .vo-av { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--primary, #1F2A44); color: var(--on-ink, #fff); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .8rem; letter-spacing: .02em; }
+  .vo-who { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; } .vo-who b { font-size: .92rem; line-height: 1.25; overflow-wrap: anywhere; }
+  .vo-who span { font-size: .8rem; color: var(--muted, #667085); overflow-wrap: anywhere; line-height: 1.35; }
+  .vo-acts { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 46px; } .vo-t:has(.vo-top input) .vo-acts { padding-left: 74px; }
+  .vo-act { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--line, var(--dk-bd-d0d5dd, #D0D5DD)); background: var(--dk-bg-fff, #fff); color: var(--dk-fg-344054, #344054); font: inherit; font-size: .82rem; font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap; }
+  .vo-act:hover { background: var(--dk-bg-f9fafb, #F9FAFB); } .vo-act svg { width: 15px; height: 15px; flex: none; }
+  .vo-act.wa { color: var(--dk-fg-067647, #067647); border-color: var(--dk-bd-abefc6, #ABEFC6); background: var(--dk-bg-ecfdf3, #ECFDF3); }
+  .vo-act.ml { color: var(--dk-fg-175cd3, #175CD3); border-color: var(--dk-bd-b2ddff, #B2DDFF); background: var(--dk-bg-eff8ff, #EFF8FF); }
+  @media (max-width: 480px) { .vo-acts, .vo-t:has(.vo-top input) .vo-acts { padding-left: 0; } .vo-act { flex: 1 1 auto; justify-content: center; } }
   label.vo-chk, .vo-chk { display: flex !important; flex-direction: row !important; align-items: center; gap: 8px; font-size: .88rem; cursor: pointer; text-align: left; } .vo-chk input { flex: none; width: auto !important; margin: 0; }
   .vo-c { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: .84rem; } .vo-c a { overflow-wrap: anywhere; }
   .vo-wa { background: var(--dk-bg-dcfce7, #DCFCE7); color: var(--dk-fg-166534, #166534); border: 1px solid var(--dk-bd-86efac, #86EFAC); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: .8rem; cursor: pointer; }
@@ -2434,7 +2448,7 @@
       <div id="calView" hidden>
         <div class="card cal-top">
           <div class="cal-bar"><button type="button" class="btn small" id="calPrev" aria-label="Previous">‹</button><button type="button" class="btn small" id="calToday">Today</button><button type="button" class="btn small" id="calNext" aria-label="Next">›</button>
-            <b id="calLbl"></b><span class="cal-seg" id="calMode"><button type="button" data-cm="week" class="on">Week</button><button type="button" data-cm="day">Day</button></span><button type="button" class="btn small primary" id="calAdd">＋ Book a viewing</button></div>
+            <b id="calLbl"></b><span class="cal-seg" id="calMode"><button type="button" data-cm="week" class="on">Week</button><button type="button" data-cm="day">Day</button></span><button type="button" class="btn small primary" id="calAdd">＋ Book a viewing</button><button type="button" class="btn small" id="calProgress">📈 Viewings by staff</button></div>
           <div class="cal-people" id="calPeople"></div><div class="cal-now" id="calNow"></div>
         </div>
         <div id="calBody"><div class="empty">Loading…</div></div>
@@ -3359,6 +3373,9 @@
     <div class="banner" id="cbClash" hidden style="margin:0"></div>
     <div class="row-actions"><button class="btn ghost" id="cbDel" type="button" hidden>Delete</button><span style="flex:1"></span><button class="btn" id="cbClose" type="button">Cancel</button><button class="btn primary" id="cbSave" type="button">Book viewing</button></div>
   </div>
+</div>
+<div class="modal" id="spModal" hidden>
+  <div class="card sp-modal"><div class="sp-mh"><b>📈 Viewings by staff</b><button type="button" class="btn small" data-sp-close>Close</button></div><div id="spSlot"></div></div>
 </div>
 <div class="modal" id="vdModal" hidden>
   <div class="card cal-form" id="vdBody"></div>
@@ -13527,14 +13544,29 @@
     var occ = (c && c.occupants) || [], l = c && c.landlord, ctxA = ctx ? ' data-vo-ctx="' + esc(JSON.stringify(ctx)) + '"' : '';
     var okE = function(e){ return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); };
     var withMail = occ.filter(function(o){ return okE(o.email); });
-    var rows = occ.map(function(o, i){ var tel = o.phone ? String(o.phone).replace(/[^\d+]/g, '') : '', wa = o.phone ? waNumber(o.phone) : '';
-      return '<div class="vo-t">' + (okE(o.email) ? '<label class="vo-chk"><input type="checkbox" data-vo-t="' + esc(String(o.email).trim()) + '"' + (on ? ' checked' : '') + '> <b>' + esc(o.name || 'Tenant') + '</b></label>' : '<span class="vo-chk"><b>' + esc(o.name || 'Tenant') + '</b> <small class="muted-note" style="margin:0">no email</small></span>') +
-        '<div class="vo-c">' + (o.phone ? '<a href="tel:' + esc(tel) + '">📞 ' + esc(o.phone) + '</a>' : '') + (o.email ? '<a href="mailto:' + esc(o.email) + '">✉ ' + esc(o.email) + '</a>' : '') +
-        (wa ? '<button type="button" class="vo-wa" data-vo-wa="' + esc(wa) + '" data-vo-name="' + esc(String(o.name || '').trim().split(/\s+/)[0]) + '">💬 WhatsApp</button>' : '') + '</div></div>'; }).join('');
-    return '<div class="vo-wrap"' + ctxA + '>' + (occ.length ? '<div class="vo-h">🏠 Living there now' + (withMail.length ? ' — tick who to email' + verb + (withMail.length > 1 ? ' <button type="button" class="linkish" data-vo-all>All</button> · <button type="button" class="linkish" data-vo-none>None</button>' : '') : '') + '</div>' + rows +
+    var rows = occ.map(function(o){ return voCard(o, okE(o.email), on); }).join('');
+    return '<div class="vo-wrap"' + ctxA + '>' + (occ.length ? '<div class="vo-h">🏠 Living there now' + (withMail.length ? ' <small>Tick who gets the viewing email' + esc(verb) + '</small>' + (withMail.length > 1 ? '<span class="vo-sel"><button type="button" class="linkish" data-vo-all>Select all</button> · <button type="button" class="linkish" data-vo-none>None</button></span>' : '') : '') + '</div>' + rows +
         (withMail.length ? '' : '<span class="muted-note" style="margin:0">None of them has an email saved — use WhatsApp or call.</span>')
       : '<span class="muted-note" style="margin:0">🏠 No tenants found for this address — type the full address with the flat / door number and postcode, or pick it from the suggestions (✅ shows the address our tenancy is under).</span>') +
       (l && l.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vo="landlord"> 🔑 Email the landlord' + verb + ' <span class="muted-note" style="margin:0">(' + esc(l.name || l.email) + ' — never the applicant’s details)</span></label>' : '<span class="muted-note" style="margin:0">🔑 ' + (l ? esc(l.name || 'The landlord') + ' has no email saved.' : 'No landlord linked to this property.') + '</span>') + '</div>';
+  }
+  // One person living at the property: initials, name, number and email, then Call / WhatsApp / Email buttons
+  // (Email opens Fixflow's email window with the viewing message ready). tick: a box to include them in the viewing email.
+  var VO_ICON = {
+    call: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
+    wa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg>',
+    mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>'
+  };
+  function voInitials(n){ var w = String(n || '').replace(/\b(mr|mrs|ms|miss|mx|dr|prof)\b\.?/gi, ' ').trim().split(/[\s-]+/).filter(Boolean); return w.length ? (w[0][0] + (w.length > 1 ? w[w.length - 1][0] : '')).toUpperCase() : '?'; }
+  function voCard(o, tick, on){
+    var tel = o.phone ? String(o.phone).replace(/[^\d+]/g, '') : '', wa = o.phone ? waNumber(o.phone) : '', em = String(o.email || '').trim();
+    var first = esc(String(o.name || '').replace(/\b(mr|mrs|ms|miss|mx|dr|prof)\b\.?/gi, ' ').trim().split(/\s+/)[0] || '');
+    var info = [o.phone ? esc(o.phone) : '', em ? esc(em) : ''].filter(Boolean).join(' · ') || 'No number or email saved';
+    return '<div class="vo-t' + (tick && on ? ' vo-on' : '') + '"><label class="vo-top">' + (tick ? '<input type="checkbox" data-vo-t="' + esc(em) + '"' + (on ? ' checked' : '') + ' aria-label="Email ' + esc(o.name || 'this tenant') + '">' : '') +
+      '<span class="vo-av" aria-hidden="true">' + esc(voInitials(o.name)) + '</span><span class="vo-who"><b>' + esc(o.name || 'Tenant') + '</b><span>' + info + '</span></span></label>' +
+      (tel || wa || em ? '<div class="vo-acts">' + (tel ? '<a class="vo-act" href="tel:' + esc(tel) + '">' + VO_ICON.call + 'Call</a>' : '') +
+        (wa ? '<button type="button" class="vo-act wa" data-vo-wa="' + esc(wa) + '" data-vo-name="' + first + '">' + VO_ICON.wa + 'WhatsApp</button>' : '') +
+        (em ? '<button type="button" class="vo-act ml" data-vo-mail="' + esc(em) + '" data-vo-name="' + first + '">' + VO_ICON.mail + 'Email</button>' : '') + '</div>' : '') + '</div>';
   }
   function vwOthersGet(box){
     var t = box ? Array.prototype.filter.call(box.querySelectorAll('[data-vo-t]'), function(i){ return i.checked; }).map(function(i){ return i.dataset.voT; }) : [];
@@ -13555,11 +13587,22 @@
       : (kind === 'moved' ? 'The viewing at ' + short + ' has moved to ' + when + '.' : 'We’ve arranged a viewing at ' + short + (when ? ' on ' + when : '') + '.') + (staffFirst ? ' ' + staffFirst + ' from our office will attend.' : '') + ' If this time isn’t convenient, please let us know on 0207 096 8131.') + ' Thank you.';
   }
   document.addEventListener('click', function(e){
-    var b = e.target.closest && e.target.closest('[data-vo-wa], [data-vo-all], [data-vo-none]'); if (!b) return;
+    var b = e.target.closest && e.target.closest('[data-vo-wa], [data-vo-mail], [data-vo-all], [data-vo-none]'); if (!b) return;
     e.preventDefault();
     if (b.dataset.voWa) { window.open('https://wa.me/' + b.dataset.voWa + '?text=' + encodeURIComponent(voWaText(b)), '_blank', 'noopener'); return; }
-    var w = b.closest('.vo-wrap'); if (w) w.querySelectorAll('[data-vo-t]').forEach(function(i){ i.checked = b.hasAttribute('data-vo-all'); });
+    if (b.dataset.voMail) { voMail(b); return; }
+    var w = b.closest('.vo-wrap'); if (w) w.querySelectorAll('[data-vo-t]').forEach(function(i){ i.checked = b.hasAttribute('data-vo-all'); i.closest('.vo-t').classList.toggle('vo-on', i.checked); });
   });
+  document.addEventListener('change', function(e){ var i = e.target.closest && e.target.closest('[data-vo-t]'); if (i) i.closest('.vo-t').classList.toggle('vo-on', i.checked); });
+  // Email one tenant straight away from Fixflow's email window, with the same message as WhatsApp.
+  function voMail(b){
+    var w = b.closest('.vo-wrap'), ctx = {}; try { ctx = JSON.parse((w && w.dataset.voCtx) || '{}'); } catch (e) {}
+    var kind = ctx.kind || ($('cbModal') && !$('cbModal').hidden && cal.edit ? 'moved' : 'booked');
+    var addr = ctx.addr || ($('cbModal') && !$('cbModal').hidden ? $('cbProp').value.trim() : ''), short = String(addr || 'your home').split(',').slice(0, 2).join(',');
+    var text = voWaText(b).replace(/^Hi( [^,]*)?, this is Residential Realtors\. /, '').replace(/ Thank you\.$/, '');
+    composeMail({ to: [b.dataset.voMail], subject: (kind === 'cancelled' ? 'Viewing cancelled — ' : kind === 'moved' ? 'Viewing time changed — ' : 'Viewing at your home — ') + short,
+      body: 'Dear ' + (b.dataset.voName || 'tenant') + ',\n\n' + text + '\n\nThank you for your help.' + mailSignoff(), title: '✉ Email the tenant' });
+  }
   var cbOthersT = null;
   function cbLoadOthers(on){
     var prop = $('cbProp').value.trim(), box = $('cbOthers');
@@ -13683,8 +13726,8 @@
         (v.email && v.status === 'booked' ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" id="vdAddrMail" checked> ✉ Email ' + esc(v.applicant || 'the applicant') + ' the new address (the confirmation again)</label>' : '') +
         '<p class="muted-note" style="margin:0">Pick it from the suggestions — ✅ shows the address our tenancy is under, with its tenants.</p></details>';
       var tell = withMail ? '<div class="row-actions" style="margin:4px 0 0"><button type="button" class="btn small" data-vd-tell>✉ Email the tenants about this viewing</button></div>' : '';
-      box.innerHTML = '<b>🏠 Living there now</b>' + (occ.length ? occ.map(function(o){ var tel = o.phone ? String(o.phone).replace(/[^\d+]/g, '') : '', wa = o.phone ? waNumber(o.phone) : '';
-        return '<div class="vd-occ"><b>' + esc(o.name || 'Tenant') + '</b>' + (o.phone ? '<a href="tel:' + esc(tel) + '">📞 ' + esc(o.phone) + '</a>' : '') + (wa ? '<a href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener">💬 WhatsApp</a>' : '') + (o.email ? '<a href="mailto:' + esc(o.email) + '">✉ ' + esc(o.email) + '</a>' : '') + (!o.phone && !o.email ? '<span class="muted-note" style="margin:0">No number or email saved</span>' : '') + '</div>'; }).join('')
+      var vctx = { kind: v.status === 'cancelled' ? 'cancelled' : 'booked', addr: v.property_address || '', when: fmtWhen(v.at), staff: v.staff || '' };
+      box.innerHTML = '<b>🏠 Living there now</b>' + (occ.length ? '<div class="vo-wrap" style="margin-top:6px" data-vo-ctx="' + esc(JSON.stringify(vctx)) + '">' + occ.map(function(o){ return voCard(o, false, false); }).join('') + '</div>'
         : '<p class="muted-note" style="margin:0">No current tenants found for this address in Fixflow' + (/\d/.test(String(v.property_address || '').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i, '').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\b/i, '')) ? ' (it may be empty).' : ' — the address has no flat or door number.') + '</p>') + tell + fix;
     });
   }
@@ -20456,7 +20499,7 @@
     if (!$('spTable')) return;
     var r = spRange();
     api('GET', '/api/admin/staff-progress?from=' + r[0] + '&to=' + r[1]).then(function(d){
-      if (!d || !d.ok) { $('spTable').innerHTML = '<p class="muted-note">Only the owner and managers can see this.</p>'; return; }
+      if (!d || !d.ok) { $('spTable').innerHTML = '<p class="muted-note">Couldn’t load the figures — try again.</p>'; return; }
       var ps = d.people, tot = { fp: 0, fo: 0, fx: 0, fd: 0, tp: 0, to: 0, ts: 0, pp: 0, pg: 0, pd: 0 };
       ps.forEach(function(x){ tot.fp += x.forms.people; tot.fo += x.forms.opened; tot.fx += x.forms.offers; tot.fd += x.forms.paid || 0; tot.tp += x.terms.people; tot.to += x.terms.opened; tot.ts += x.terms.signed; tot.pp += x.pvr.people; tot.pg += x.pvr.signed; tot.pd += x.pvr.paid; });
       var cell = function(main, sub, cls){ return '<td class="sp-n' + (cls ? ' ' + cls : '') + '"><b>' + main + '</b>' + (sub && sub !== 'signed' ? '<small>' + sub + '</small>' : '') + '</td>'; };
@@ -20472,6 +20515,10 @@
         : '<p class="muted-note">Nothing sent in this period.</p>');
     });
   }
+  // Calendar → "📈 Viewings by staff": the same Staff progress box in a window, for every login (staff too).
+  $('calProgress').addEventListener('click', function(){ var bx = $('spTable').closest('.sp-box'); bx.dataset.home = '1'; $('spSlot').appendChild(bx); $('spModal').hidden = false; loadStaffProgress(); });
+  $('spModal').addEventListener('click', function(e){ if (e.target !== this && !e.target.closest('[data-sp-close]')) return; this.hidden = true;
+    var bx = $('spSlot').querySelector('.sp-box'), home = $('teamSec').querySelector('.act-sec-b'); if (bx && home) home.insertBefore(bx, home.firstChild); });
   $('spChips').addEventListener('click', function(e){ var b = e.target.closest('[data-sp]'); if (!b) return; spPeriod = b.dataset.sp; this.querySelectorAll('[data-sp]').forEach(function(x){ x.classList.toggle('on', x === b); }); $('spCustom').hidden = spPeriod !== 'custom'; loadStaffProgress(); });
   ['spFrom', 'spTo'].forEach(function(id){ $(id).addEventListener('change', loadStaffProgress); });
   function loadTeam(){
