@@ -528,7 +528,7 @@ require('./rivals')(app, { tools: listings.rmTools, gnomenFor: function (rows) {
   email: function (subject, textFor, hash) { return jobs.ownerEmail(subject, textFor, hash); } });
 require('./calls')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, canManage: function (req) { return jobs.canManage(req); } });
 // Applicant leads from outside the website (Rightmove's datafeed, or any service posting to /hooks/leads/<key>).
-require('./leads')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, canManage: function (req) { return jobs.canManage(req); }, findListing: function (ref) { return listings.findRef(ref); } });
+require('./leads')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, canManage: function (req) { return jobs.canManage(req); }, findListing: function (ref) { return listings.findRef(ref); }, rememberRef: function (ref, rec, src) { return listings.rememberRef(ref, rec, src); }, refsReady: function () { return listings.refsReady(); } });
 // Out-of-hours phone answering (Twilio + Claude): calls become Website leads.
 require('./voice')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, teamAlert: function (b, h) { return jobs.teamAlert(b, h); }, staffEmailAll: function (s, t, h) { return jobs.staffEmailAll(s, t, h); }, ownerEmail: function (s, t, h) { return jobs.ownerEmail(s, t, h); }, ntfy: function (b) { return jobs.ntfy(b); } });
 // The same photo on more than one property: tell the office once per new case, so it can be removed in Gnomen.
