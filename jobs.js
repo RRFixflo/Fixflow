@@ -619,6 +619,8 @@ ALTER TABLE viewings ADD COLUMN IF NOT EXISTS fb_sent_at TIMESTAMPTZ;
 ALTER TABLE viewings ADD COLUMN IF NOT EXISTS app_fb JSONB;
 ALTER TABLE viewings ADD COLUMN IF NOT EXISTS app_fb_at TIMESTAMPTZ;
 ALTER TABLE viewings ADD COLUMN IF NOT EXISTS att_ok_at TIMESTAMPTZ;
+-- The applicant cancelled from their confirmation email (/vx/<token>): {reason, note, at, other_time}.
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS app_cancel JSONB;
 CREATE UNIQUE INDEX IF NOT EXISTS viewings_fb_token ON viewings (fb_token);
 -- Each offer-form link sent to an applicant from Fixflow: who, how, and what they did with it.
 CREATE TABLE IF NOT EXISTS offer_invites (
@@ -8387,7 +8389,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let sig = []; const sm = /\n\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Thanks,?|Yours sincerely,?)\s*\n([\s\S]*)$/i.exec(body);
     if (sm) { sig = sm[2].split('\n').map(function (l) { return unmark(l).trim(); }).filter(Boolean); body = body.slice(0, sm.index); }
     if (!sm) { const sm2 = /\n\s*(\[[a-z]+\])*\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Yours sincerely,?)\s*(\[\/[a-z]+\])*\s*\n([\s\S]*)$/i.exec(body); if (sm2) { sig = sm2[4].split('\n').map(function (l) { return unmark(l).trim(); }).filter(Boolean); body = body.slice(0, sm2.index); } }
-    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer'], [/\/vc\/[\w-]+/, 'Yes, I’ll be there'], [/\/cr\/[\w-]+/, 'Choose in one click'], [/\/rp\/[\w-]+/, 'I’ve already paid — tell us when']];
+    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer'], [/\/vc\/[\w-]+/, 'Yes, I’ll be there'], [/\/vx\/[\w-]+/, 'Cancel or change my viewing'], [/\/cr\/[\w-]+/, 'Choose in one click'], [/\/rp\/[\w-]+/, 'I’ve already paid — tell us when']];
     const buttons = [];
     const btnOf = function (b) {
       // The offer form for a property: a card with the address and a wide, rounded button.
@@ -8400,7 +8402,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
         '<p style="margin:-14px 0 22px;font-size:12px;color:#98a2b3;text-align:center">Button not working? Copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>';
       // The applicant's one-click "I'm coming" link: a wide green button.
       if (b.label === 'Yes, I’ll be there') return '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:2px 0 22px"><tr><td align="center" bgcolor="#067647" style="background:#067647;background-image:linear-gradient(#067647,#067647);border-radius:999px"><a href="' + e(b.url) + '" style="display:block;padding:16px 24px;color:#ffffff;text-decoration:none;font-weight:800;font-size:17px;line-height:20px;text-align:center">&#10003; Yes, I’ll be there</a></td></tr></table>' +
-        '<p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3;text-align:center">Can’t make it? Just reply to this email or call 0207 096 8131.</p>';
+        '<p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3;text-align:center">Questions? Just reply to this email or call 0207 096 8131.</p>';
+      // Their link to cancel or ask for another time: a quiet outlined button, so it never competes with "Yes, I'll be there".
+      if (b.label === 'Cancel or change my viewing') return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 22px"><tr><td style="border:1px solid #d0d5dd;border-radius:999px;padding:10px 20px"><a href="' + e(b.url) + '" style="color:#344054;text-decoration:none;font-weight:600;font-size:14px">Cancel or change my viewing</a></td></tr></table>';
       return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td bgcolor="#0b1f3a" style="background:#0b1f3a;background-image:linear-gradient(#0b1f3a,#0b1f3a);border-radius:12px;padding:15px 26px"><a href="' + e(b.url) + '" style="display:block;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;line-height:20px">' + e(b.label) + ' &rarr;</a></td></tr></table><p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3">Or copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>';
     };
     // Long web addresses show as their site (e.g. "google.co.uk/…") — the link itself is unchanged.
@@ -8664,7 +8668,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   // Viewings: book them, mark them done (or cancelled / no-show) and add feedback.
   // The calendar asks for a date range (from / to); the Offers page for the recent ones.
-  const VW_COLS = 'id, created_at, property_address, property_key, at, applicant, status, feedback, share, created_by, staff, email, phone, lead_id, mins, fb_sent_at, app_fb, app_fb_at, att_ok_at';
+  const VW_COLS = 'id, created_at, property_address, property_key, at, applicant, status, feedback, share, created_by, staff, email, phone, lead_id, mins, fb_sent_at, app_fb, app_fb_at, att_ok_at, app_cancel';
   app.get('/api/admin/viewings', withDb(async function (p, req, res) {
     const from = Date.parse(req.query.from), to = Date.parse(req.query.to);
     if (from && to && to > from && to - from < 100 * 86400000) return res.json({ ok: true, viewings: (await p.query('SELECT ' + VW_COLS + ' FROM viewings WHERE at >= $1 AND at < $2 ORDER BY at LIMIT 2000', [new Date(from).toISOString(), new Date(to).toISOString()])).rows });
@@ -8679,6 +8683,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       (o.moved ? 'Your viewing has moved. We now have an appointment scheduled for ' : 'We have an appointment scheduled for ') + '[b]' + addr + '[/b] on [b]' + o.when + '[/b].\n\n' +
       'This email is a confirmation of the above appointment.\n\n' +
       (o.confirmUrl ? '[b]Please confirm you’re coming — just press the button below.[/b] ' + o.confirmUrl + '\n\n' : '') +
+      (o.cancelUrl ? 'Can’t make it? You can cancel or ask for another time here: ' + o.cancelUrl + '\n\n' : '') +
       (o.note ? o.note + '\n\n' : '') +
       '[b]Rental process[/b] — If you are interested in making an offer to rent a property, you are required to pay a holding deposit of one week’s rent and complete a Holding Deposit Form. This form gives you the opportunity to outline any terms of your offer, including negotiating a lower price if applicable. If the offer is accepted by the landlord, your holding deposit (reservation fee) will be used towards the initial payment of your first month’s rent. Residential Realtors operates a strict first come, first served policy and does not offer a bidding service. Should your offer be rejected, your reservation fee will be returned to you within 24 hours; before the property is offered to a different interested party or put back on the market, you will be offered an opportunity to renegotiate any terms which an agreement could not be reached on.\n\n' +
       (o.offerUrl ? 'Holding Deposit Form for this property: ' + o.offerUrl + '\n\n' : '') +
@@ -8787,6 +8792,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return ((await p.query('UPDATE viewings SET fb_token = coalesce(fb_token, $2) WHERE id = $1 RETURNING fb_token', [id, t])).rows[0] || {}).fb_token || '';
   }
   async function vcUrl(p, id) { const t = await vwToken(p, id); return t ? String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '') + '/vc/' + t : ''; }
+  async function vxUrl(p, id) { const t = await vwToken(p, id); return t ? String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '') + '/vx/' + t : ''; }
+  // The staff emails behind a viewing — whoever is doing it and whoever booked it (Team emails) — so the applicant's
+  // emails copy them in and replies reach them, not just info@ (the owner asked).
+  async function viewingStaffMails(p, v, req) {
+    const names = [v.staff, v.created_by, req && req.user && req.user.id ? req.user.name : ''].map(function (x) { return String(x || '').trim().toLowerCase(); }).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    if (!names.length) return [];
+    const rows = (await p.query("SELECT lower(name) AS n, lower(trim(email)) AS e FROM staff_users WHERE disabled_at IS NULL AND coalesce(email, '') <> '' AND lower(name) = ANY($1::text[])", [names])).rows;
+    return names.map(function (n) { const r = rows.filter(function (x) { return x.n === n; })[0]; return r && /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(r.e) ? r.e : ''; }).filter(function (e, i, a) { return e && a.indexOf(e) === i; });
+  }
   // Email the applicant about their viewing: booked, moved to a new time, or cancelled (sent from Fixflow, kept in Sent emails, noted on their lead).
   async function viewingMail(p, req, v, kind) {
     if (!v || !v.email || !canEmail() || !sendEmail) return false;
@@ -8794,11 +8808,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const first = String(v.applicant || '').trim().split(/\s+/)[0], me = req.user && req.user.id ? req.user.name : '', addr = String(v.property_address || '');
     const subject = { booked: 'Viewing Confirmation', moved: 'Viewing Confirmation — new time', address: 'Viewing Confirmation — updated address', cancelled: 'Viewing cancelled' }[kind] + ' — ' + (kind === 'cancelled' ? when : addr.split(',').slice(0, 2).join(',') + ', ' + when);
     const t = kind === 'cancelled' ? 'Dear ' + (first || 'applicant') + ',\n\nYour viewing of ' + addr + ' on ' + when + ' has been cancelled.\n\nIf you’d like to book another time, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors'
-      : viewingConfirmText({ name: v.applicant, address: addr, when: viewingWhen(v.at), me: me, moved: kind === 'moved', offerUrl: vfOfferUrl(v), confirmUrl: await vcUrl(p, v.id) })
+      : viewingConfirmText({ name: v.applicant, address: addr, when: viewingWhen(v.at), me: me, moved: kind === 'moved', offerUrl: vfOfferUrl(v), confirmUrl: await vcUrl(p, v.id), cancelUrl: await vxUrl(p, v.id) })
         .replace(/^(Dear[^\n]*\n\n)/, kind === 'address' ? '$1Please note the address for your viewing has been updated. The full address is: [b]' + addr + '[/b]\n\n' : '$1');
-    const r = await sendEmail({ to: [v.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: t, html: brandEmail(t, subject.split(' — ')[0]) }).catch(function () { return { ok: false }; });
+    const sm = await viewingStaffMails(p, v, req).catch(function () { return []; }), rt = sm.concat(['info@residentialrealtors.co.uk']);
+    const r = await sendEmail({ to: [v.email], cc: sm, replyTo: rt, fromName: 'Residential Realtors', subject: subject, text: t, html: brandEmail(t, subject.split(' — ')[0]) }).catch(function () { return { ok: false }; });
     const ok = !!(r && r.ok !== false);
-    logSent(req, [v.email], [], 'info@residentialrealtors.co.uk', subject, t, r);
+    logSent(req, [v.email], sm, rt.join(', '), subject, t, r);
     if (ok && v.lead_id) await crmLog(p, 'vr:' + v.lead_id, '✉ ' + subject + ' emailed to ' + v.email, req);
     return ok;
   }
@@ -8952,7 +8967,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
         '\n\nIf you’d like to go ahead, you can make an offer straight away:\n\n' + vfOfferUrl(v) + '\n\nAny questions, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (v.staff ? String(v.staff).split(/\s+/)[0] + '\n' : '') + 'Residential Realtors';
       let replyTo = 'info@residentialrealtors.co.uk';
       try { const u = v.staff ? (await p.query("SELECT email FROM staff_users WHERE disabled_at IS NULL AND lower(name) = lower($1) AND coalesce(email, '') <> '' LIMIT 1", [v.staff])).rows[0] : null; if (u && /@/.test(u.email)) replyTo = u.email; } catch (e) {}
-      const r = await sendEmail({ to: [v.email], replyTo: replyTo, fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (e) { return { ok: false, error: e.message }; });
+      const fsm = await viewingStaffMails(p, v, null).catch(function () { return []; });
+      const r = await sendEmail({ to: [v.email], replyTo: fsm.length ? fsm.concat(['info@residentialrealtors.co.uk']) : replyTo, fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (e) { return { ok: false, error: e.message }; });
       if (!r.ok) { await p.query('UPDATE viewings SET fb_sent_at = NULL WHERE id = $1', [v.id]); console.error('[viewing feedback]', r.error); continue; }
       p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok) VALUES (NULL, $1, $2, $3, $4, $5, true)', ['Fixflow (automatic)', [v.email], replyTo, subject, text]).catch(function () {});
       if (v.lead_id) p.query('INSERT INTO crm_notes (ref, note, by_name, auto) VALUES ($1, $2, $3, true)', ['vr:' + v.lead_id, 'Feedback link (with “make an offer”) emailed automatically after the viewing at ' + addr, 'Fixflow']).catch(function () {});
@@ -9051,6 +9067,53 @@ document.querySelectorAll('.lcu').forEach(function(box){
       }
     }
     ok();
+  }));
+  // The applicant cancels (or asks for another time) from their confirmation email (/vx/<token>): the viewing is
+  // cancelled, noted on their lead, and whoever is doing it is emailed (the office copied in) — the owner asked.
+  const VX_WHY = { other_time: 'Can’t make this time — please contact me to rearrange', found: 'I’ve found somewhere else', stopped: 'I’m no longer looking', other: 'Something else' };
+  app.get('/vx/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
+    const demo = req.params.token === 'example';
+    const v = demo ? { property_address: 'Flat 3, 12 Example Street, London SE1 0XX', at: new Date(Date.now() + 2 * 86400000), status: 'booked' } : await vfViewing(p, req.params.token);
+    res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+    if (!v) return res.status(404).send(trackShell('Link not found', '<h1>Link not found</h1><p>This link may have expired. Please call us on 0207 096 8131.</p>', true));
+    const addr = String(v.property_address || 'the property').split(',').slice(0, 2).join(','), when = viewingWhen(v.at), past = new Date(v.at).getTime() < Date.now() - 1800000;
+    const head = (demo ? '<div class="card" style="background:#fffaeb;border-color:#fedf89"><b>Example page</b> — what applicants see when they want to cancel. The viewing is made up and nothing is saved.</div>' : '') +
+      '<p class="sub" style="margin:0 0 4px">Your viewing</p><h1 style="margin:0 0 6px">' + htmlEsc(addr) + '</h1><p class="sub">🗓 ' + htmlEsc(when) + '</p>';
+    let body;
+    if (v.status === 'cancelled') body = '<div class="card"><b>This viewing is cancelled.</b><p class="muted" style="margin:4px 0 0">' + ((v.app_cancel || {}).reason === 'other_time' ? 'We’ll be in touch to find another time.' : 'If you’d like to book another time, please get in touch.') + '</p></div>';
+    else if (past) body = '<div class="card"><b>This viewing time has passed.</b><p class="muted" style="margin:4px 0 0">If you’d like to book another viewing, please get in touch.</p></div>';
+    else body = '<div class="card" id="vxBox"><form id="vxF" method="post" class="stack"><p style="margin:0 0 8px"><b>Can’t make it?</b> Let us know and we’ll free up the slot.</p>' +
+      Object.keys(VX_WHY).map(function (k, i) { return '<label class="opt"><input type="radio" name="reason" value="' + k + '"' + (i ? '' : ' checked') + '> ' + htmlEsc(VX_WHY[k]) + '</label>'; }).join('') +
+      '<label class="vx-l">Anything to add? <span class="muted">(optional — e.g. times that suit you)</span><textarea name="note" maxlength="600" rows="3"></textarea></label>' +
+      '<button type="submit" class="btn vx-btn">Cancel my viewing</button><p class="muted" id="vxM" role="status" style="margin:0"></p></form></div>' +
+      '<p class="muted" style="text-align:center"><a href="' + htmlEsc(String(req.originalUrl).replace('/vx/', '/vc/')) + '">Still coming? Confirm your viewing instead</a></p>' +
+      '<script>(function(){var f=document.getElementById("vxF"),m=document.getElementById("vxM"),box=document.getElementById("vxBox");f.addEventListener("submit",function(e){e.preventDefault();var b=f.querySelector("button");b.disabled=true;m.textContent="Sending…";' +
+      'var r=f.querySelector("[name=reason]:checked");fetch(location.pathname,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason:r?r.value:"other",note:f.note.value})}).then(function(x){return x.json()}).then(function(d){if(d.ok){box.innerHTML="<b>✓ Your viewing is cancelled.</b><p class=\\"muted\\" style=\\"margin:4px 0 0\\">"+(r&&r.value==="other_time"?"Thank you — we’ll be in touch to find another time.":"Thank you for letting us know.")+"</p>";}else{b.disabled=false;m.textContent=d.error==="past"?"This viewing time has passed.":"Sorry, that didn’t send — please call 0207 096 8131.";}}).catch(function(){b.disabled=false;m.textContent="Sorry, that didn’t send — please call 0207 096 8131.";});});})();</script>';
+    const help = '<p class="muted" style="text-align:center">Questions? Call <a href="tel:02070968131">0207 096 8131</a> or email <a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a></p>';
+    const css = '<style>#vxF .opt{display:flex;gap:10px;align-items:center;padding:8px 0;font-weight:500}#vxF .opt input{width:20px;height:20px;flex:none}.vx-l{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:.92rem;margin-top:6px}#vxF textarea{font:inherit;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}.vx-btn{width:100%;background:#fff;color:#b42318;border:1.5px solid #b42318;border-radius:999px;padding:13px 18px;font-size:1rem;font-weight:700}</style>';
+    res.send(trackShell('Cancel your viewing', head + body + help + css, true, 'Viewing'));
+  }));
+  app.post('/vx/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    if (req.params.token === 'example') return res.json({ ok: true, example: true });
+    const v = await vfViewing(p, req.params.token); if (!v) return res.status(404).json({ ok: false });
+    if (v.status === 'cancelled') return res.json({ ok: true, already: true });
+    if (new Date(v.at).getTime() < Date.now() - 1800000) return res.status(409).json({ ok: false, error: 'past' });
+    const b = req.body || {}, reason = VX_WHY[b.reason] ? b.reason : 'other', note = str(b.note, 600) || '';
+    const r = await p.query("UPDATE viewings SET status = 'cancelled', app_cancel = $2 WHERE id = $1 AND status <> 'cancelled' RETURNING id", [v.id, JSON.stringify({ reason: reason, note: note, at: new Date().toISOString() })]);
+    if (!r.rows.length) return res.json({ ok: true, already: true });
+    const addr = String(v.property_address || '').split(',').slice(0, 2).join(','), when = viewingWhen(v.at), name = v.applicant || 'The applicant';
+    const line = '✕ Cancelled their viewing from the confirmation email: ' + when + ' · ' + addr + ' — ' + VX_WHY[reason] + (note ? ' · “' + note + '”' : '');
+    if (v.lead_id) await p.query('INSERT INTO crm_notes (ref, note, by_name, auto) VALUES ($1, $2, $3, true)', ['vr:' + v.lead_id, line, name]).catch(function () {});
+    if (canEmail() && sendEmail) {
+      const sm = await viewingStaffMails(p, v, null).catch(function () { return []; });
+      const subj = '✕ Viewing cancelled by the applicant: ' + name + ' — ' + addr;
+      const text = name + ' has cancelled their viewing at ' + addr + ' on ' + when + ' (from the link in their confirmation email).\n\nReason: ' + VX_WHY[reason] + (note ? '\nTheir note: ' + note : '') + (v.phone ? '\nTheir number: ' + v.phone : '') + (v.email ? '\nTheir email: ' + v.email : '') +
+        (reason === 'other_time' ? '\n\nThey’d like another time — please get in touch with them.' : '') + '\n\nIf the tenants living there were told about this viewing, let them know it’s off (open the viewing on the Calendar).\n\nFixflow - Residential Realtors';
+      sendEmail({ to: sm.length ? sm : ['info@residentialrealtors.co.uk'], cc: sm.length ? ['info@residentialrealtors.co.uk'] : [], replyTo: v.email && /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(v.email) ? v.email : 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subj, text: text, html: brandEmail(text, 'Viewing cancelled') }).catch(function (e) { console.error('Viewing cancelled email failed:', e.message); });
+    }
+    res.json({ ok: true });
   }));
   // Offer-form links sent to applicants: one private link each, so we can see if it was opened.
   app.post('/api/admin/offer-invites', withDb(async function (p, req, res) {
@@ -13463,10 +13526,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query('UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object(\'src\', data->\'src\')), status = \'booked\', handled_at = now(), handled_by = $3 WHERE id = $1', [x.id, JSON.stringify(d), req.user ? req.user.name : 'Office']);
     let emailed = false;
     if (b.email !== false && x.email && canEmail() && sendEmail) {
-      const t = viewingConfirmText({ name: x.name, address: x.address, when: viewingWhen(at), note: str(b.note, 1000), me: req.user && req.user.id ? req.user.name : '', offerUrl: vfOfferUrl({ property_address: x.address }), confirmUrl: await vcUrl(p, d.viewing_id) });
-      const r = await sendEmail({ to: [x.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Viewing Confirmation — ' + String(x.address).split(',').slice(0, 2).join(',') + ', ' + slotText(b.at), text: t, html: brandEmail(t, 'Viewing Confirmation') }).catch(function () { return { ok: false }; });
+      const t = viewingConfirmText({ name: x.name, address: x.address, when: viewingWhen(at), note: str(b.note, 1000), me: req.user && req.user.id ? req.user.name : '', offerUrl: vfOfferUrl({ property_address: x.address }), confirmUrl: await vcUrl(p, d.viewing_id), cancelUrl: await vxUrl(p, d.viewing_id) });
+      const csm = await viewingStaffMails(p, { staff: req.user ? req.user.name : '' }, req).catch(function () { return []; }), crt = csm.concat(['info@residentialrealtors.co.uk']);
+      const r = await sendEmail({ to: [x.email], cc: csm, replyTo: crt, fromName: 'Residential Realtors', subject: 'Viewing Confirmation — ' + String(x.address).split(',').slice(0, 2).join(',') + ', ' + slotText(b.at), text: t, html: brandEmail(t, 'Viewing Confirmation') }).catch(function () { return { ok: false }; });
       emailed = !!(r && r.ok !== false);
-      logSent(req, [x.email], [], 'info@residentialrealtors.co.uk', 'Viewing Confirmation — ' + String(x.address).split(',').slice(0, 2).join(',') + ', ' + slotText(b.at), t, r);   // in their Sent emails
+      logSent(req, [x.email], csm, crt.join(', '), 'Viewing Confirmation — ' + String(x.address).split(',').slice(0, 2).join(',') + ', ' + slotText(b.at), t, r);   // in their Sent emails
     }
     await crmLog(p, 'vr:' + x.id, 'Viewing confirmed for ' + slotText(b.at) + (emailed ? ' · confirmation emailed' : ''), req);
     teamAlert({ title: '✅ Viewing booked: ' + slotText(b.at), message: String(x.address).split(',').slice(0, 2).join(',') + ' · ' + x.name + (x.phone ? ' · ' + x.phone : '') + ' — booked by ' + (req.user ? req.user.name : 'the office') + '.', tags: ['white_check_mark'] }, '#leads').catch(function () {});
