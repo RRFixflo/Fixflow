@@ -669,6 +669,10 @@
   .mypw-err { background: var(--dk-bg-fdecec, #fdecec); color: var(--dk-fg-b42318, #b42318); border-radius: 10px; padding: 8px 10px; font-size: .86rem; font-weight: 600; margin: 6px 0 0; }
   .mypw-act { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   #mlModal { z-index: 60; }
+  .inf-intro { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 14px; margin: 0 0 12px; border: 1px dashed var(--dk-bd-b2ccff, #B2CCFF); border-radius: 12px; background: var(--dk-bg-f5f8ff, #F5F8FF); } .inf-intro span { flex: 1 1 260px; font-size: .86rem; color: var(--muted, #667085); }
+  .inf-people { margin: 8px 0 0; font-size: .88rem; display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
+  .inf-form { width: min(680px, 100%); max-height: 92vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; } .inf-mh { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .inf-p { border: 1px solid var(--line, var(--dk-bd-e4e7ec, #E4E7EC)); border-radius: 10px; padding: 10px 12px; margin: 0 0 8px; } .inf-p-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; } .inf-p-h .linkish { background: none; border: 0; font: inherit; color: var(--blue, #175cd3); cursor: pointer; }
   .oc-ll-sent { margin: 4px 0; font-size: .84rem; color: var(--dk-fg-067647, #067647); font-weight: 600; }
   .rb-noemail { color: var(--dk-fg-b54708, #B54708); font-size: .85em; }
   .sp-modal { max-width: 980px; width: 100%; } .sp-mh { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; } .sp-mh b { font-size: 1.05rem; }
@@ -2507,7 +2511,7 @@
         </details>
         <details class="card" id="offAppr" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">🏠 Property appraisal <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">estimated value and rent from similar homes within a mile — with a report for the landlord</span></summary><div id="apprBody" style="margin-top:10px"></div></details>
         <details class="card" id="offInv" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📨 Offer forms sent <span class="muted-note" id="offInvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary><div id="offInvList" style="margin-top:10px"></div></details>
-        <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="offMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="offMaxAll">▾ Expand all</button></span></div>
+        <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div><span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small" data-inf-new title="Send a landlord an offer to sound them out — e.g. for someone who came into the office">💬 Informal offer</button><button type="button" class="btn small ghost" id="offMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="offMaxAll">▾ Expand all</button></span></div>
         <div id="offList" style="margin-bottom:14px"></div>
         <details class="card" id="offMonth" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📊 Accepted offers by month <span class="muted-note" id="offMonthSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
           <div class="om-nav"><button class="om-arrow" type="button" id="offMonPrev" aria-label="Previous month">‹</button><div class="om-cur"><b id="offMonLbl"></b><button type="button" class="linkish" id="offMonNow" hidden>Back to this month</button></div><button class="om-arrow" type="button" id="offMonNext" aria-label="Next month">›</button><input type="month" id="offMon" hidden></div>
@@ -13139,7 +13143,7 @@
 
   // ---------- Offers from applicants (the /offer link) ----------
   var offers = [], offTab = 'open', offPropF = null;   // offPropF: show only the offers for this property (from the available list)
-  var OFF_TABS = [['open', 'To decide'], ['accepted', 'Accepted'], ['rejected', 'Rejected'], ['withdrawn', 'Withdrawn'], ['all', 'All']];
+  var OFF_TABS = [['open', 'To decide'], ['accepted', 'Accepted'], ['rejected', 'Rejected'], ['withdrawn', 'Withdrawn'], ['all', 'All'], ['informal', '💬 Informal']];
   function loadOffers(){
     if (!meta.db) return Promise.resolve();
     return api('GET', '/api/admin/offers').then(function(d){ if (!d.ok) return; offers = d.offers; renderOfferBanner(); if (view === 'offers') renderOffers(); })['catch'](function(){});
@@ -14211,13 +14215,14 @@
     if (!renderOffers.alertsInit) { renderOffers.alertsInit = true; var op = null; try { op = localStorage.getItem('rr_alerts_open'); } catch (e) {} if (op === '1' || (op == null && staffMode && !hid)) { $('offAlertStaff').open = true; offAlertQr(); } }
     $('offLink').value = offLinkBase(); $('offOpen').href = offLinkBase(); renderOffMonth();
     $('offProps').innerHTML = allPropsForList().map(function(p){ return '<option value="' + esc(p.address) + '">'; }).join('');
-    var match = function(o){ return offTab === 'all' || (offTab === 'open' ? o.status === 'new' : o.status === offTab); };
-    $('offTabs').innerHTML = OFF_TABS.map(function(t){ var n = offers.filter(function(o){ return t[0] === 'all' || (t[0] === 'open' ? o.status === 'new' : o.status === t[0]); }).length;
+    var match = function(o){ return offTab === 'all' ? o.status !== 'informal' : (offTab === 'open' ? o.status === 'new' : o.status === offTab); };
+    $('offTabs').innerHTML = OFF_TABS.map(function(t){ var n = offers.filter(function(o){ return t[0] === 'all' ? o.status !== 'informal' : (t[0] === 'open' ? o.status === 'new' : o.status === t[0]); }).length;
       return '<button type="button" data-otab="' + t[0] + '"' + (offTab === t[0] ? ' class="on"' : '') + '>' + t[1] + ' <span class="n">' + n + '</span></button>'; }).join('');
     // The offer being worked on stays on screen (even if its status no longer fits this tab), with its open sections and place kept.
     var list = offers.filter(function(o){ return offPropF ? offSameProp(offPropF, o) : (match(o) || (offFocus && String(o.id) === String(offFocus))); });
     var keep = offKeepState();
-    $('offList').innerHTML = (offPropF ? '<div class="off-propf">📝 All offers for <b>' + esc(offPropF) + '</b> (' + list.length + ') <button type="button" class="linkish" data-off-propf-x>✕ Show all offers</button></div>' : '') + (list.length ? list.map(offerCard).join('') : '<p class="muted-note">' + (offTab === 'open' ? 'No offers waiting for a decision.' : 'Nothing here yet.') + ' Send applicants the link above.</p>');
+    $('offList').innerHTML = (offPropF ? '<div class="off-propf">📝 All offers for <b>' + esc(offPropF) + '</b> (' + list.length + ') <button type="button" class="linkish" data-off-propf-x>✕ Show all offers</button></div>' : '') + (offTab === 'informal' && !offPropF ? '<div class="inf-intro"><b>💬 Informal offers</b><span>For someone who comes into the office and wants to know whether the landlord would accept an offer before making a formal one. Type it in, then email the landlord a copy — no contact details, nothing signed or paid.</span><button type="button" class="btn small primary" data-inf-new>＋ New informal offer</button></div>' : '') +
+      (list.length ? list.map(offerCard).join('') : '<p class="muted-note">' + (offTab === 'open' ? 'No offers waiting for a decision.' : offTab === 'informal' ? 'No informal offers yet.' : 'Nothing here yet.') + (offTab === 'informal' ? '' : ' Send applicants the link above.') + '</p>');
     offRestoreState(keep);
     // Seen: new offers on screen stop counting as new.
     var unseen = list.filter(function(o){ return !o.seen_at; });
@@ -14528,8 +14533,8 @@
     e.preventDefault(); openMailto(a.getAttribute('href'));
   });
   function offSendMail(mail){
-    if (meta.canEmail) { composeMail({ to: mail.to, subject: mail.subject, body: mail.body, title: mail.offerId ? '✉ Email the landlord — offer received' : undefined, offerLandlordId: mail.offerId || null,
-      files: mail.offerId ? [{ name: 'Offer summary for the landlord (PDF, no contact details)', url: mail.pdf }] : undefined }); return; }
+    if (meta.canEmail) { composeMail({ to: mail.to, subject: mail.subject, body: mail.body, title: mail.offerId ? '✉ Email the landlord — offer received' : undefined, offerLandlordId: mail.offerId || null, onSent: mail.offerId ? function(){ loadOffers(); } : undefined,
+      files: mail.offerId ? [{ name: (/^Possible/.test(mail.subject) ? 'Possible offer' : 'Offer summary') + ' for the landlord (PDF, no contact details)', url: mail.pdf }] : undefined }); return; }
     var coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
     if (coarse) { openMailto('mailto:' + mail.to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(mail.subject) + '&body=' + encodeURIComponent(mail.body)); return; }
     var blob = emlFile({ to: mail.to.join(', '), subject: mail.subject, body: mail.body }, []), a = document.createElement('a');
@@ -14573,6 +14578,13 @@
   // The email to the landlord about a new offer, in the office's words.
   function offLandlordMail(o, info){
     var d = o.data || {}, pcm = Number((d.money || {}).pcm) || 0, ll = info.landlord || {}, first = String(ll.name || '').trim().split(/\s+/)[0];
+    if (d.informal) {
+      var n = (d.tenants || []).length;
+      var ib = 'Dear ' + (first || 'Landlord') + ',\n\nRE: ' + o.property_address + '\n\nWe have ' + (n > 1 ? n + ' applicants' : 'an applicant') + ' interested in your property who would like to know whether you would consider the following offer before making a formal one:\n\nRent: £' + Math.round(pcm) + ' pcm\nMove date: ' + (d.move_in ? ukDay(d.move_in) : 'To be agreed') + (d.stay ? '\nTerm: ' + d.stay : '') +
+        '\n\nA summary is attached (PDF), with what they do for work and their income. You can also see it and let us know your thoughts here: ' + info.link +
+        '\n\nNothing has been signed or paid yet — if you are happy in principle, we will ask them to make a formal offer and pay the holding deposit. For their privacy, their contact details stay with us.\n\nLook forward to hearing from you.' + mailSignoff().replace('\n\nRegards,', '\n\nKind regards,');
+      return { to: ll.email ? [ll.email] : [], subject: 'Possible offer – ' + o.property_address, body: ib, file: 'Possible offer for landlord - ' + o.ref, offerId: o.id, pdf: info.pdf || ('/api/admin/offers/' + o.id + '/landlord.pdf') };
+    }
     var body = 'Dear ' + (first || 'Landlord') + ',\n\nRE: ' + o.property_address + '\n\nI am delighted to inform you we have received a formal offer on your property.\n\nOffer Details:\nPrice: £' + Math.round(pcm) + ' pcm\nMove Date: ' + ukDay(d.move_in) + (d.stay ? '\nTerm: ' + d.stay : '') +
       '\n\nA summary of the offer is attached (PDF). You can also see the full details here — the applicants, their work and income, guarantors and any conditions — and tell us whether you accept: ' + info.link +
       '\n\nFor the applicants’ privacy, their contact details and ID documents stay with us.' +
@@ -14657,7 +14669,94 @@
   $('offMonNext').addEventListener('click', function(){ $('offMon').value = offMonShift($('offMon').value || offMonthNow(), 1); renderOffMonth(); });
   var offMin = {}; try { offMin = JSON.parse(localStorage.getItem('rr_off_min') || '{}') || {}; } catch (e) {}
   function offMinSave(){ try { localStorage.setItem('rr_off_min', JSON.stringify(offMin)); } catch (e) {} }
+  // An informal offer typed in by staff to sound out the landlord (no contact details, nothing signed or paid).
+  function infCard(o){
+    var d = o.data || {}, m = d.money || {}, ts = d.tenants || [];
+    var line = function(t){ return [t.name ? '<b>' + esc(t.name) + '</b>' : '', esc([t.income_type, t.position].filter(Boolean).join(' · ')), t.salary ? esc(gbp0(Number(t.salary))) + ' a year' : '', t.g_name ? 'guarantor' + (t.g_relation ? ' (' + esc(t.g_relation) + ')' : '') : ''].filter(Boolean).join(' · '); };
+    return '<article class="oc oc-wait inf-card" data-off="' + o.id + '">' +
+      '<header class="oc-head"><div class="oc-av">💬</div><div class="oc-who"><div class="oc-addr">' + esc(o.property_address || '') + '</div>' +
+        '<div class="oc-meta">Informal offer · ' + esc(o.ref) + ' · by ' + esc(d.made_by || 'the office') + ' · ' + esc(fmtShort(o.created_at)) + '</div>' +
+        '<div class="oc-pills">' + offLlPill(o) + (d.landlord_emailed_at ? '<span class="oc-pill ok">✉ Emailed to the landlord ' + esc(fmtShort(d.landlord_emailed_at)) + '</span>' : '<span class="oc-pill muted">Not sent to the landlord yet</span>') + '</div></div>' +
+        '<div class="oc-price"><div class="oc-pw">' + esc(gbp(m.pcm || 0)) + '<small> /month</small></div><div class="oc-pcm">' + esc(gbp(offPw(o))) + ' /week' + (d.move_in ? ' · from ' + esc(ukDay(d.move_in)) : '') + (d.stay ? ' · ' + esc(d.stay) : '') + '</div>' + offAskHtml(o) + '</div></header>' +
+      (ts.length ? '<div class="inf-people">' + ts.map(function(t){ return '<div>👤 ' + line(t) + '</div>'; }).join('') + '</div>' : '') +
+      ((d.conditions || []).length ? '<div class="inf-people"><b>Asking for:</b> ' + d.conditions.map(esc).join(' · ') + '</div>' : '') +
+      (d.about ? '<div class="inf-people muted-note" style="margin:0">' + esc(d.about) + '</div>' : '') +
+      ((d.landlord_response || {}).note ? '<div class="inf-people"><b>The landlord said:</b> “' + esc(d.landlord_response.note) + '”</div>' : '') +
+      '<footer class="oc-actions"><button type="button" class="btn small primary" data-off-ll>🏠 ' + (d.landlord_emailed_at ? 'Send to the landlord again' : 'Send to the landlord') + '</button><button type="button" class="btn small" data-inf-edit>✏️ Change</button>' +
+        '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/landlord.pdf">📄 Landlord copy (PDF)</a><span class="oc-sp"></span><button type="button" class="btn small ghost danger" data-inf-del title="Delete this informal offer">🗑</button></footer></article>';
+  }
+  var INF_INCOME = ['Employed', 'Self-employed', 'Student', 'Retired', 'Universal Credit / benefits', 'Other'];
+  function infPersonRow(t){
+    t = t || {};
+    return '<div class="inf-p"><div class="inf-p-h"><b>Applicant</b><button type="button" class="linkish" data-inf-rm>Remove</button></div><div class="lt-grid">' +
+      '<label>First name (and initial)<input class="inp" data-f="name" maxlength="80" value="' + esc(t.name || '') + '" placeholder="e.g. Sam T."></label>' +
+      '<label>Income<select class="inp" data-f="income"><option value="">—</option>' + INF_INCOME.map(function(x){ return '<option' + (t.income_type === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></label>' +
+      '<label>Job and employer / course<input class="inp" data-f="work" maxlength="160" value="' + esc(t.position || '') + '" placeholder="e.g. Nurse at Guy’s Hospital"></label>' +
+      '<label>Yearly income £<input class="inp" data-f="salary" inputmode="decimal" value="' + esc(t.salary || '') + '" placeholder="e.g. 38000"></label></div>' +
+      '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-f="guarantor"' + (t.g_name ? ' checked' : '') + '> Has a UK guarantor</label>' +
+      '<div class="lt-grid inf-g"' + (t.g_name ? '' : ' hidden') + '><label>Guarantor is their<input class="inp" data-f="g_relation" maxlength="60" value="' + esc(t.g_relation || '') + '" placeholder="e.g. Parent"></label>' +
+      '<label>Homeowner?<select class="inp" data-f="g_homeowner"><option value="">—</option><option' + (t.g_homeowner === 'Yes' ? ' selected' : '') + '>Yes</option><option' + (t.g_homeowner === 'No' ? ' selected' : '') + '>No</option></select></label>' +
+      '<label>Guarantor yearly income £<input class="inp" data-f="g_salary" inputmode="decimal" value="' + esc(t.g_salary || '') + '"></label></div></div>';
+  }
+  function infOpen(o){
+    var m = $('infModal');
+    if (!m) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="infModal" hidden><div class="card inf-form"><div class="inf-mh"><h3 id="infTitle" style="margin:0">💬 Informal offer to a landlord</h3><button type="button" class="btn small ghost" data-inf-x>✕</button></div>' +
+        '<p class="muted-note" style="margin:0">For someone who came in and wants to know if the landlord would accept before making a formal offer. The landlord sees all of this — <b>don’t type phone numbers, emails or full names</b>.</p>' +
+        '<div class="lt-grid"><label style="grid-column:1/-1">Property<input class="inp" id="infProp" list="offProps" maxlength="400" autocomplete="off" placeholder="Start typing the address"></label>' +
+        '<label>Rent offered<span style="display:flex;gap:6px"><input class="inp" id="infRent" inputmode="decimal" placeholder="e.g. 1950"><select class="inp" id="infPer" style="width:auto"><option value="pcm">a month</option><option value="pw">a week</option></select></span></label>' +
+        '<label>Move-in date<input class="inp" id="infMove" type="date"></label><label>Length of tenancy<input class="inp" id="infStay" maxlength="60" placeholder="e.g. 12 months" list="infStays"></label></div>' +
+        '<datalist id="infStays"><option value="6 months"><option value="12 months"><option value="18 months"><option value="24 months"><option value="Periodic (rolling)"></datalist>' +
+        '<div id="infPeople"></div><button type="button" class="btn small" data-inf-add>＋ Add another applicant</button>' +
+        '<label class="lbl">Anything they’re asking for (one per line)<textarea class="inp" id="infCond" rows="2" placeholder="e.g. A pet cat"></textarea></label>' +
+        '<label class="lbl">About them (optional)<textarea class="inp" id="infAbout" rows="2" maxlength="2000" placeholder="e.g. Couple relocating for work, non-smokers"></textarea></label>' +
+        '<p class="err" id="infErr" style="margin:0" hidden></p><div class="row-actions"><button type="button" class="btn" data-inf-x>Cancel</button><button type="button" class="btn" id="infSave">Save</button><button type="button" class="btn primary" id="infSend">Save &amp; email the landlord</button></div></div></div>');
+      m = $('infModal');
+      m.addEventListener('click', function(e){
+        if (e.target === m || e.target.closest('[data-inf-x]')) { m.hidden = true; return; }
+        if (e.target.closest('[data-inf-add]')) { $('infPeople').insertAdjacentHTML('beforeend', infPersonRow()); return; }
+        var rm = e.target.closest('[data-inf-rm]'); if (rm) { if ($('infPeople').children.length > 1) rm.closest('.inf-p').remove(); return; }
+      });
+      m.addEventListener('change', function(e){ var g = e.target.closest('[data-f="guarantor"]'); if (g) g.closest('.inf-p').querySelector('.inf-g').hidden = !g.checked; });
+      $('infSave').addEventListener('click', function(){ infSave(false); });
+      $('infSend').addEventListener('click', function(){ infSave(true); });
+    }
+    var d = (o && o.data) || {};
+    m.dataset.id = o ? o.id : ''; $('infTitle').textContent = o ? '✏️ Change the informal offer' : '💬 Informal offer to a landlord';
+    $('infProp').value = o ? o.property_address || '' : (offPropF || ''); $('infRent').value = o ? Math.round(Number((d.money || {}).pcm) || 0) || '' : ''; $('infPer').value = 'pcm';
+    $('infMove').value = d.move_in || ''; $('infStay').value = d.stay || ''; $('infCond').value = (d.conditions || []).join('\n'); $('infAbout').value = d.about || '';
+    $('infPeople').innerHTML = ((d.tenants || []).length ? d.tenants : [{}]).map(infPersonRow).join(''); $('infErr').hidden = true;
+    m.hidden = false; setTimeout(function(){ $('infProp').focus(); }, 30);
+  }
+  function infSave(send){
+    var m = $('infModal'), err = function(t){ $('infErr').textContent = t; $('infErr').hidden = false; $('infErr').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+    var people = Array.prototype.map.call($('infPeople').querySelectorAll('.inf-p'), function(r){ var v = function(f){ var el = r.querySelector('[data-f="' + f + '"]'); return el.type === 'checkbox' ? el.checked : el.value.trim(); };
+      return { name: v('name'), income: v('income'), work: v('work'), salary: v('salary'), guarantor: v('guarantor'), g_relation: v('g_relation'), g_homeowner: v('g_homeowner'), g_salary: v('g_salary') }; });
+    var all = [$('infAbout').value, $('infCond').value].concat(people.map(function(p){ return [p.name, p.work].join(' '); })).join(' ');
+    if (!$('infProp').value.trim()) return err('Choose the property.');
+    if (!(Number(String($('infRent').value).replace(/[£,\s]/g, '')) > 0)) return err('Put in the rent offered.');
+    if (/[^\s@]+@[^\s@]+\.[a-z]{2,}/i.test(all) || /(\d[\s-]?){10,}/.test(all)) return err('Please take out the phone number or email — the landlord sees this.');
+    var rent = $('infRent').value, body = { id: m.dataset.id || undefined, property: $('infProp').value.trim(), pcm: $('infPer').value === 'pcm' ? rent : '', pw: $('infPer').value === 'pw' ? rent : '', move_in: $('infMove').value, stay: $('infStay').value.trim(), applicants: people, conditions: $('infCond').value, about: $('infAbout').value.trim() };
+    var b = send ? $('infSend') : $('infSave'); busy(b, true, 'Saving…');
+    api('POST', '/api/admin/offers/informal', body).then(function(r){
+      busy(b, false); if (!r || !r.ok) return err(r && r.error === 'rent' ? 'Put in the rent offered.' : 'Couldn’t save — try again.');
+      m.hidden = true; offTab = 'informal'; offFocus = r.id; toast('✓ Informal offer saved');
+      loadOffers().then(function(){ if (send) infEmail(r.id); });
+    });
+  }
+  function infEmail(id){
+    var o = offers.filter(function(x){ return x.id === Number(id); })[0]; if (!o) return;
+    api('POST', '/api/admin/offers/' + o.id + '/landlord-link', {}).then(function(d2){ if (!d2 || !d2.ok) { toast('Couldn’t make the landlord’s link'); return; } o.data.landlord_token = o.data.landlord_token || d2.link.split('/').pop(); offSendMail(offLandlordMail(o, d2)); });
+  }
+  document.addEventListener('click', function(e){
+    if (e.target.closest('[data-inf-new]')) { infOpen(null); return; }
+    var c = e.target.closest('.inf-card'); if (!c) return;
+    var o = offers.filter(function(x){ return x.id === Number(c.dataset.off); })[0]; if (!o) return;
+    if (e.target.closest('[data-inf-edit]')) { infOpen(o); return; }
+    if (e.target.closest('[data-inf-del]')) { if (!confirm('Delete this informal offer?')) return; api('POST', '/api/admin/offers/informal/' + o.id + '/delete', {}).then(function(r){ toast(r && r.ok ? 'Informal offer deleted' : 'Couldn’t delete it'); loadOffers(); }); }
+  });
   function offerCard(o){
+    if (o.status === 'informal') return infCard(o);
     var d = o.data || {}, m = d.money || {}, ts = d.tenants || [], docs = o.docs || [];
     var initials = String(o.lead_name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(function(w){ return w[0].toUpperCase(); }).join('');
     var stMap = { accepted: ['ok', '✓ Accepted'], rejected: ['no', '✕ Rejected'], withdrawn: ['muted', '↩ Withdrawn by applicant'], new: ['wait', '● To decide'] };
