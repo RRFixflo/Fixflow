@@ -8679,25 +8679,56 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).replace(',', '').replace(/ (am|pm)$/i, '$1');
   }
   // Who else to tell about a viewing: the tenants living there now (with an email) and the property's landlord.
+  // Two ways of writing the same home: the strict loose match (same postcode, numbers, a street word), or — when one
+  // side has no postcode — the same door/flat numbers exactly and two distinctive words in common (e.g. building + road).
+  function sameHomeVc(ap, bp) {
+    if (addrLoose(ap, bp)) return true;
+    if ((ap.pc && bp.pc) || !ap.nums.length || !bp.nums.length) return false;
+    const a = ap.nums.slice().sort().join(','), b = bp.nums.slice().sort().join(',');
+    if (a !== b) return false;
+    return ap.words.filter(function (w) { return bp.words.indexOf(w) !== -1; }).length >= 2;
+  }
+  // Who lives at a property and who owns it, for the viewing windows. Looks in every place Fixflow keeps them, so a
+  // home whose address is written a little differently still finds its people: tenants saved on the Tenants page
+  // (exact address, then the same home written differently), the current tenancy's tenants (exact or loose), and the
+  // landlord from the property, the tenancy's landlord record, or the landlord named on the tenancy.
   async function viewingContacts(p, addr) {
-    let k = propKey(String(addr || '')); if (!k) return { tenants: [], landlord: null };
-    // Written differently from our records ("Flat 3, 10 Sample Road" / "3 Sample Road, SE1 1AA")? Use the record
-    // with current tenants that is loosely the same home (same postcode, same numbers, a street word in common).
-    if (!(await p.query('SELECT 1 FROM property_tenants WHERE property_key = $1 AND moved_out_at IS NULL LIMIT 1', [k])).rows.length) {
-      const ap = addrParts(addr);
-      if (ap.pc && ap.nums.length) {
-        const hit = (await p.query('SELECT DISTINCT property_key, address FROM property_tenants WHERE moved_out_at IS NULL AND address IS NOT NULL')).rows.filter(function (r) { return addrLoose(ap, addrParts(r.address)); });
-        if (hit.length && hit.every(function (r) { return r.property_key === hit[0].property_key; })) k = hit[0].property_key;
-      }
+    let k = propKey(String(addr || '')); if (!k) return { tenants: [], occupants: [], landlord: null };
+    const ap = addrParts(addr), today = londonDay(), via = [];
+    if (!(await p.query('SELECT 1 FROM property_tenants WHERE property_key = $1 AND moved_out_at IS NULL LIMIT 1', [k])).rows.length && ap.nums.length) {
+      const hit = (await p.query('SELECT DISTINCT property_key, address FROM property_tenants WHERE moved_out_at IS NULL AND address IS NOT NULL')).rows.filter(function (r) { return sameHomeVc(ap, addrParts(r.address)); });
+      if (hit.length && hit.every(function (r) { return r.property_key === hit[0].property_key; })) { k = hit[0].property_key; via.push('tenants'); }
     }
     const ok = function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); };
-    const tenants = (await p.query(`SELECT DISTINCT ON (lower(tn.email)) tn.name, tn.email FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
-      WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND tn.deleted_at IS NULL AND coalesce(pt.role, '') <> 'guarantor' AND coalesce(tn.email, '') <> ''`, [k]).catch(function () { return { rows: [] }; })).rows.filter(function (r) { return ok(r.email); });
-    const l = (await p.query('SELECT l.id, l.name, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1 LIMIT 1', [k])).rows[0] || null;
-    // Everyone living there now, with their numbers (for staff arranging access on the Calendar).
-    const occupants = (await p.query(`SELECT DISTINCT ON (tn.id) tn.id, tn.name, tn.phone, tn.email FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
+    const occ = (await p.query(`SELECT DISTINCT ON (tn.id) tn.id, tn.name, tn.phone, tn.email FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
       WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND tn.deleted_at IS NULL AND coalesce(pt.role, '') <> 'guarantor'`, [k]).catch(function () { return { rows: [] }; })).rows;
-    return { key: k, tenants: tenants, occupants: occupants, landlord: l && ok(l.email) ? l : (l ? Object.assign({}, l, { email: null }) : null) };
+    // The current tenancy at this home (started, or starting within two months, and not ended by a notice that has run out).
+    const tcys = (await p.query('SELECT id, property_key, address, start_date, data FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date DESC, id DESC')).rows.filter(function (t) {
+      const d = t.data || {}, st = String(d.start_date || t.start_date || '').slice(0, 10), endN = d.notice && d.notice.end ? String(d.notice.end).slice(0, 10) : '';
+      if (!st || st > addDaysIso(today, 60) || (endN && endN < today)) return false;
+      return t.property_key === k || t.property_key === propKey(String(addr || '')) || sameHomeVc(ap, addrParts(d.address || t.address || ''));
+    });
+    const tcy = tcys[0] || null, td = tcy ? (tcy.data || {}) : {};
+    const seen = {}; occ.forEach(function (o) { seen[String(o.email || '').toLowerCase() || 'n:' + String(o.name || '').toLowerCase()] = 1; });
+    (td.tenants || []).forEach(function (t, i) {
+      if (!t || !(t.name || t.email || t.phone)) return;
+      const key = String(t.email || '').toLowerCase() || 'n:' + String(t.name || '').toLowerCase();
+      if (seen[key] || (t.name && occ.some(function (o) { return String(o.name || '').toLowerCase().trim() === String(t.name).toLowerCase().trim(); }))) return;
+      seen[key] = 1; occ.push({ id: null, name: t.name || '', phone: t.phone || '', email: t.email || '', from: 'tenancy' });
+    });
+    if (tcy && (td.tenants || []).length) via.push('tenancy');
+    const tenants = []; const em = {};
+    occ.forEach(function (o) { if (ok(o.email) && !em[String(o.email).toLowerCase()]) { em[String(o.email).toLowerCase()] = 1; tenants.push({ name: o.name, email: String(o.email).trim() }); } });
+    // Landlord: the property's, the same property under the tenancy's address, the tenancy's landlord record, then the one named on it.
+    let l = (await p.query('SELECT l.id, l.name, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = ANY($1::text[]) LIMIT 1', [[k, propKey(String(addr || '')), tcy ? tcy.property_key : ''].filter(Boolean)])).rows[0] || null;
+    if (!l && ap.nums.length) {
+      const hit = (await p.query('SELECT pl.property_key, pl.address, l.id, l.name, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.address IS NOT NULL')).rows.filter(function (r) { return sameHomeVc(ap, addrParts(r.address)); });
+      if (hit.length && hit.every(function (r) { return r.id === hit[0].id; })) { l = { id: hit[0].id, name: hit[0].name, email: hit[0].email }; via.push('landlord'); }
+    }
+    if (!l && td.landlord_id) l = (await p.query('SELECT id, name, email FROM landlords WHERE id = $1', [td.landlord_id])).rows[0] || null;
+    if (!l && td.landlord && (td.landlord.name || td.landlord.email)) l = { id: null, name: td.landlord.name || '', email: td.landlord.email || '' };
+    return { key: k, tenants: tenants, occupants: occ, tenancy_id: tcy ? tcy.id : null, tenancy_address: tcy ? (td.address || tcy.address) : null, via: via,
+      landlord: l && ok(l.email) ? l : (l ? Object.assign({}, l, { email: null }) : null) };
   }
   app.get('/api/admin/viewing-contacts', withDb(async function (p, req, res) {
     res.json(Object.assign({ ok: true }, await viewingContacts(p, str(req.query.property, 400))));
