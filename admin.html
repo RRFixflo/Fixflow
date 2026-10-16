@@ -669,6 +669,7 @@
   .mypw-err { background: var(--dk-bg-fdecec, #fdecec); color: var(--dk-fg-b42318, #b42318); border-radius: 10px; padding: 8px 10px; font-size: .86rem; font-weight: 600; margin: 6px 0 0; }
   .mypw-act { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   #mlModal { z-index: 60; }
+  .oc-ll-sent { margin: 4px 0; font-size: .84rem; color: var(--dk-fg-067647, #067647); font-weight: 600; }
   .rb-noemail { color: var(--dk-fg-b54708, #B54708); font-size: .85em; }
   .sp-modal { max-width: 980px; width: 100%; } .sp-mh { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; } .sp-mh b { font-size: 1.05rem; }
   #spSlot .sp-box > .sp-h > b { display: none; }   /* the email window opens on top of other windows (e.g. Tell landlord) */
@@ -14510,7 +14511,7 @@
         toast('✓ Email sent to ' + addr); var cb = mlCur && mlCur.onSent; mlClose(); if (cb) cb(d);
       }, function(){ err('Couldn’t send — please try again.'); });
     }
-    var vids = mlValIds(), send = function(toList, cc){ return api('POST', '/api/admin/email', { to: toList, cc: cc, subject: $('mlSubj').value.trim(), text: $('mlBody').value, copy: $('mlCopy').checked, valuation_ids: vids }); };
+    var vids = mlValIds(), send = function(toList, cc){ return api('POST', '/api/admin/email', { to: toList, cc: cc, subject: $('mlSubj').value.trim(), text: $('mlBody').value, copy: $('mlCopy').checked, valuation_ids: vids, offer_landlord_id: (mlCur && mlCur.offerLandlordId) || undefined }); };
     // Bcc (e.g. a notice to many tenants): one email each, so nobody sees the others' addresses.
     var bccs = bcc ? bcc.split(/[,;]/).map(function(x){ return x.trim(); }).filter(Boolean) : [];
     var jobs = bccs.length ? bccs.map(function(x){ return function(){ return send([x], ''); }; }) : [function(){ return send(to, $('mlCc').value.trim()); }];
@@ -14527,7 +14528,8 @@
     e.preventDefault(); openMailto(a.getAttribute('href'));
   });
   function offSendMail(mail){
-    if (meta.canEmail) { composeMail({ to: mail.to, subject: mail.subject, body: mail.body }); return; }
+    if (meta.canEmail) { composeMail({ to: mail.to, subject: mail.subject, body: mail.body, title: mail.offerId ? '✉ Email the landlord — offer received' : undefined, offerLandlordId: mail.offerId || null,
+      files: mail.offerId ? [{ name: 'Offer summary for the landlord (PDF, no contact details)', url: mail.pdf }] : undefined }); return; }
     var coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
     if (coarse) { openMailto('mailto:' + mail.to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(mail.subject) + '&body=' + encodeURIComponent(mail.body)); return; }
     var blob = emlFile({ to: mail.to.join(', '), subject: mail.subject, body: mail.body }, []), a = document.createElement('a');
@@ -14572,23 +14574,25 @@
   function offLandlordMail(o, info){
     var d = o.data || {}, pcm = Number((d.money || {}).pcm) || 0, ll = info.landlord || {}, first = String(ll.name || '').trim().split(/\s+/)[0];
     var body = 'Dear ' + (first || 'Landlord') + ',\n\nRE: ' + o.property_address + '\n\nI am delighted to inform you we have received a formal offer on your property.\n\nOffer Details:\nPrice: £' + Math.round(pcm) + ' pcm\nMove Date: ' + ukDay(d.move_in) + (d.stay ? '\nTerm: ' + d.stay : '') +
-      '\n\nYou can see the full offer details here — the applicants, their work and income, guarantors and any conditions — and tell us whether you accept: ' + info.link +
+      '\n\nA summary of the offer is attached (PDF). You can also see the full details here — the applicants, their work and income, guarantors and any conditions — and tell us whether you accept: ' + info.link +
+      '\n\nFor the applicants’ privacy, their contact details and ID documents stay with us.' +
       '\n\nShould you wish to accept the applicants’ offer, please sign and return our Terms and Conditions of Business along with a copy of your passport' + (info.terms ? (info.terms.signed ? ' (we already have your signed terms — thank you).' : '. You can review and e-sign them here: ' + info.terms.link) : ' (an electronic copy will follow this email which will allow you to e-sign and return our terms and conditions).') +
       '\n\nResidential Realtors are currently offering new landlords six months free management on all properties. No more nagging tenants, no more hassle — just sit back, put your feet up and let us handle the rest! Residential Realtors offers industry-leading software which makes reporting repairs easy for both landlords and tenants. Tenants can send simple and accurate reports through a picture-based system, with translation into English from over 40 languages — no more lengthy, confusing phone calls. Tenants can report repairs 24 hours a day, 7 days a week using their PC, mobile or tablet, and can easily report their issues or receive online guidance to solve problems themselves, saving time for everyone involved.' + (info.report ? ' Try it yourself: ' + info.report : '') +
       '\n\nShould you wish to take advantage of this offer, or would like further details about our fully managed service, feel free to call me. I would be happy to go through the full service details and what else you can expect from your dedicated property manager.\n\nLook forward to hearing from you.' + mailSignoff().replace('\n\nRegards,', '');
-    return { to: ll.email ? [ll.email] : [], subject: 'Offer received – ' + o.property_address, body: body, file: 'Offer for landlord - ' + o.ref };
+    return { to: ll.email ? [ll.email] : [], subject: 'Offer received – ' + o.property_address, body: body, file: 'Offer for landlord - ' + o.ref, offerId: o.id, pdf: info.pdf || ('/api/admin/offers/' + o.id + '/landlord.pdf') };
   }
   function offLlPanel(card, o, info){
     var old = card.querySelector('.oc-ll'); if (old) old.remove();
     var ll = info.landlord || {}, el = document.createElement('div'); el.className = 'oc-ll';
     el.innerHTML = '<b>🏠 Send the offer to the landlord</b><span class="muted-note" style="margin:0">' + (ll.name ? 'Landlord on file: ' + esc(ll.name) + (ll.email ? ' · ' + esc(ll.email) : '') : 'No landlord on file for this property — add their email in the draft.') + ' Their page shows the offer without the applicants’ phone numbers, emails, dates of birth or IDs.</span>' +
-      '<div class="oc-ll-b"><button type="button" class="btn small primary" data-ll-mail>✉ Email the landlord</button><button type="button" class="btn small wa-btn" data-ll-wa>' + WA_ICON + 'WhatsApp</button><button type="button" class="btn small" data-ll-copy>🔗 Copy link</button><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(info.link) + '">Preview ↗</a></div>';
+      (info.emailed_at || (o.data || {}).landlord_emailed_at ? '<div class="oc-ll-sent">✓ Emailed to the landlord ' + esc(fmtShort(info.emailed_at || o.data.landlord_emailed_at)) + ' — send again below if needed</div>' : '') +
+      '<div class="oc-ll-b"><button type="button" class="btn small primary" data-ll-mail>✉ Email the landlord (PDF attached)</button><a class="btn small" target="_blank" rel="noopener" href="' + esc(info.pdf || ('/api/admin/offers/' + o.id + '/landlord.pdf')) + '">📄 Landlord copy (PDF)</a><button type="button" class="btn small wa-btn" data-ll-wa>' + WA_ICON + 'WhatsApp</button><button type="button" class="btn small" data-ll-copy>🔗 Copy link</button><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(info.link) + '">Preview ↗</a></div>';
     var lr = (o.data || {}).landlord_response; if (lr && lr.answer !== 'discuss') el.insertAdjacentHTML('beforeend', '<div style="margin-top:6px;font-size:.84rem">The landlord ' + (lr.answer === 'accept' ? 'accepted' : 'declined') + ' — their decision is locked. <button type="button" class="linkish" data-ll-reopen>Let them choose again</button></div>');
     card.querySelector('.oc-actions').before(el);
     el.addEventListener('click', function(e){
       if (e.target.closest('[data-ll-reopen]')) { if (!confirm('Let the landlord choose again on their link?')) return; api('POST', '/api/admin/offers/' + o.id, { landlord_reopen: true }).then(function(d){ if (d.ok) { delete o.data.landlord_response; toast('Reopened — the landlord can choose again'); renderOffers(); } }); return; }
       if (e.target.closest('[data-ll-copy]')) { offCopyText(info.link); return; }
-      if (e.target.closest('[data-ll-mail]')) { offSendMail(offLandlordMail(o, info)); api('POST', '/api/admin/offers/' + o.id, { note: 'Offer email prepared for the landlord' }); return; }
+      if (e.target.closest('[data-ll-mail]')) { offSendMail(offLandlordMail(o, info)); return; }
       if (e.target.closest('[data-ll-wa]')) { var ph = String(ll.phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'); window.open('https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent('Hi ' + (String(ll.name || '').split(/\s+/)[0] || 'there') + ', we’ve received a formal offer on ' + shortAddr(o.property_address) + ' — £' + Math.round(Number(((o.data || {}).money || {}).pcm) || 0) + ' pcm. You can see the details and let us know if you accept here: ' + info.link + ' — Residential Realtors'), '_blank', 'noopener'); api('POST', '/api/admin/offers/' + o.id, { note: 'Offer sent to the landlord by WhatsApp' }); }
     });
   }
@@ -14713,7 +14717,7 @@
         (o.status === 'rejected' && o.lead_email ? '<a class="btn small primary" data-off-refund href="' + esc(refundEmail()) + '">✉ ' + (o.paid_at ? 'Email for refund details' : 'Email them') + '</a>' : '') +
         (o.status === 'accepted' && (o.lead_email || (d.tenants || []).some(function(t){ return t && t.email; })) ? '<button type="button" class="btn small primary" data-off-accmail>✉ Offer confirmation</button>' : '') +
         (o.status === 'accepted' && !staffMode ? '<button type="button" class="btn small" data-off-tenants title="Save every applicant in your Tenants list at this property">👥 ' + (d.tenants_added_at ? 'Added as tenants ✓' : 'Add as tenants') + '</button><button type="button" class="btn small" data-off-tcy>🏠 Start tenancy</button>' : '') +
-        (o.status === 'rejected' || o.status === 'withdrawn' ? '' : '<button type="button" class="btn small" data-off-ll title="Send the landlord the offer to review (no applicant contact details)">🏠 Send to landlord</button>') +
+        (o.status === 'rejected' || o.status === 'withdrawn' ? '' : '<button type="button" class="btn small" data-off-ll title="Email the landlord that an offer has come in, with a copy of the offer without the applicants’ contact details">🏠 Send to landlord' + (d.landlord_emailed_at ? ' ✓' : '') + '</button>') +
         '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/pdf" title="The signed offer as a PDF, like the holding deposit form">📄 Offer form (PDF)</a>' +
         '<span class="oc-sp"></span>' +
         '<button type="button" class="btn small ghost" data-off-track title="The applicant’s private link to follow their offer">🔗 Tracking link</button>' +

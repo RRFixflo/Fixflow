@@ -49,7 +49,7 @@
   var token = (location.pathname.match(/\/offer\/review\/([\w-]{16,40})/) || [])[1];
   fetch('/api/offers/review/' + token, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
     if (!d.ok) { $('hero').innerHTML = '<span class="eyebrow">Offer</span><h1>Link not found</h1><p>Please contact Residential Realtors.</p>'; return; }
-    $('hero').innerHTML = '<span class="eyebrow">Offer ' + esc(d.ref) + '</span><h1>' + esc(d.property) + '</h1><p>We’ve received a formal offer on your property. Here are the details for you to review.</p>' +
+    $('hero').innerHTML = '<span class="eyebrow">Offer ' + esc(d.ref) + '</span><h1>' + esc(d.property) + '</h1><p>We’ve received a formal offer on your property. Here are the details for you to review.</p><p style="margin-top:8px"><a href="/api/offers/review/' + encodeURIComponent(token) + '/pdf" target="_blank" rel="noopener" style="color:#fff;font-weight:600">⬇ Download a copy (PDF)</a></p>' +
       '<div class="stats"><div><span>Rent</span><b>' + gbp(d.pcm) + '</b> <small style="color:#94a3b8">/month</small></div><div><span>Weekly</span><b>' + gbp(d.offer_pw) + '</b></div><div><span>Move in</span><b>' + esc(day(d.move_in)) + '</b></div><div><span>Term</span><b>' + esc(d.stay || '—') + '</b></div></div>';
     var ten = d.tenants.map(function(t, i){
       var rows = [['Income', [t.income, t.employment].filter(Boolean).join(', ')], ['Work', t.work], ['Gross salary', t.salary ? gbp(t.salary) + ' a year' : ''], ['Studying', t.study], ['Living now', t.status],
