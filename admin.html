@@ -5313,7 +5313,15 @@
     api('GET', '/api/admin/available').then(function(d){ if (d && d.ok) psAvail = d.items || []; });
   }
   function psNorm(v){ return String(v || '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+  // Built once and reused for a minute (it used to be rebuilt from every job, certificate and tenancy on each key press,
+  // which made the address boxes slow to type in).
+  var psSrcCache = null, psSrcAt = 0, psSrcN = -1;
   function psSources(){
+    var avN = (avItems && avItems.length) || (psAvail && psAvail.length) || 0;
+    if (psSrcCache && Date.now() - psSrcAt < 60000 && psSrcN === avN) return psSrcCache;
+    psSrcCache = psSourcesBuild(); psSrcAt = Date.now(); psSrcN = avN; return psSrcCache;
+  }
+  function psSourcesBuild(){
     var out = [], seen = {};
     var add = function(addr, extra, rank){ var k = propKey(addr); if (!k) return; if (seen[k]) { if (extra && !seen[k].extra) { seen[k].extra = extra; seen[k].rank = rank; } return; } var o = { address: addr, extra: extra || '', rank: rank || 0, n: psNorm(addr), pc: (pcOf(addr) || '').replace(/\s+/g, '').toUpperCase() }; seen[k] = o; out.push(o); };
     (avItems && avItems.length ? avItems : psAvail || []).filter(function(x){ return x.status === 'available'; }).forEach(function(x){ add(x.address, 'Available' + (x.rent_pcm ? ' · ' + gbp(Number(x.rent_pcm)).replace(/\.00$/, '') + ' pcm' : '') + (x.beds != null ? ' · ' + (Number(x.beds) === 0 ? 'Studio' : x.beds + ' bed') : ''), 2); });
@@ -14703,7 +14711,7 @@
     if (!m) {
       document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="infModal" hidden><div class="card inf-form"><div class="inf-mh"><h3 id="infTitle" style="margin:0">💬 Informal offer to a landlord</h3><button type="button" class="btn small ghost" data-inf-x>✕</button></div>' +
         '<p class="muted-note" style="margin:0">For someone who came in and wants to know if the landlord would accept before making a formal offer. The landlord sees all of this — <b>don’t type phone numbers, emails or full names</b>.</p>' +
-        '<div class="lt-grid"><label style="grid-column:1/-1">Property<input class="inp" id="infProp" list="offProps" maxlength="400" autocomplete="off" placeholder="Start typing the address"></label>' +
+        '<div class="lt-grid"><label style="grid-column:1/-1">Property<input class="inp" id="infProp" data-psug="our" maxlength="400" autocomplete="off" placeholder="Start typing the address or postcode"></label>' +
         '<label>Rent offered<span style="display:flex;gap:6px"><input class="inp" id="infRent" inputmode="decimal" placeholder="e.g. 1950"><select class="inp" id="infPer" style="width:auto"><option value="pcm">a month</option><option value="pw">a week</option></select></span></label>' +
         '<label>Move-in date<input class="inp" id="infMove" type="date"></label><label>Length of tenancy<input class="inp" id="infStay" maxlength="60" placeholder="e.g. 12 months" list="infStays"></label></div>' +
         '<datalist id="infStays"><option value="6 months"><option value="12 months"><option value="18 months"><option value="24 months"><option value="Periodic (rolling)"></datalist>' +
@@ -14721,7 +14729,7 @@
       $('infSave').addEventListener('click', function(){ infSave(false); });
       $('infSend').addEventListener('click', function(){ infSave(true); });
     }
-    var d = (o && o.data) || {};
+    var d = (o && o.data) || {}; psOurList();   // the quick address list, ready before they type
     m.dataset.id = o ? o.id : ''; $('infTitle').textContent = o ? '✏️ Change the informal offer' : '💬 Informal offer to a landlord';
     $('infProp').value = o ? o.property_address || '' : (offPropF || ''); $('infRent').value = o ? Math.round(Number((d.money || {}).pcm) || 0) || '' : ''; $('infPer').value = 'pcm';
     $('infMove').value = d.move_in || ''; $('infStay').value = d.stay || ''; $('infCond').value = (d.conditions || []).join('\n'); $('infAbout').value = d.about || '';
