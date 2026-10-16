@@ -2224,7 +2224,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && (/^\/(jobs|tenancies|tenancy-docs|tenancy-payments|invoices|certificates|landlords|quotes|photos|email-files|notes|licence-pool|licence-registers|council-tax)(\/.*)?$/.test(path) ||
       ['/property-info', '/rm-stock', '/tenant-notices', '/tenant-records', '/tenants', '/tenancy-settings', '/contractors', '/rent-board', '/statements', '/rent-recoveries', '/renewal-fees', '/cert-services', '/cert-requests', '/epc-lookup', '/licence-doc', '/licensing-schemes'].indexOf(path) !== -1)) return true;
     if (method === 'GET') return path === '/tenant-suggest' || path === '/landlord-suggest' || path === '/our-props' || path === '/viewing-contacts' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|landlord\.pdf|doc\/\d+)$/.test(path);
-    if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
+    if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path) || /^\/offers\/informal(\/\d+\/delete)?$/.test(path);
     return false;
   }
 
@@ -2509,7 +2509,7 @@ module.exports = function mountJobs(app, opts) {
       const c = String(x.to_contact || ''); mark(row(x.sent_by).forms, rk(/@/.test(c) ? c : '', /@/.test(c) ? '' : c, x.to_name, x.property_address, 'i' + x.id), { opened: x.opens > 0, started: !!x.started_at, offer: !!x.offer_id });
     });
     // Signed offer forms: offers sent in the period, credited to whoever they're credited to (once per applicant).
-    (await p.query("SELECT id, lead_name, lead_email, lead_phone, property_address, paid_at, data->'credit' AS credit FROM offers WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz", range)).rows.forEach(function (o) {
+    (await p.query("SELECT id, lead_name, lead_email, lead_phone, property_address, paid_at, data->'credit' AS credit FROM offers WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz AND status <> 'informal'", range)).rows.forEach(function (o) {
       const cr = Array.isArray(o.credit) ? o.credit.filter(function (c) { return c && c.name && (c.share == null || Number(c.share) > 0); }) : [];
       (cr.length ? cr.map(function (c) { return c.name; }) : ['Not credited']).forEach(function (nm) { mark(row(nm).signed, rk(o.lead_email, o.lead_phone, o.lead_name, o.property_address, 'o' + o.id), { paid: !!o.paid_at }); });
     });
@@ -6012,7 +6012,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (Object.keys(keys).length) {
       const kList = Object.keys(keys), dayT = function (v) { return new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
       const vs = (await p.query("SELECT property_key, property_address, at, applicant, status, feedback, share FROM viewings WHERE property_key = ANY($1::text[]) AND at > now() - interval '60 days' AND status <> 'cancelled' ORDER BY at", [kList])).rows;
-      const os = (await p.query("SELECT id, property_key, property_address, lead_name, offer_pw, status, paid_at, created_at, decided_at, data FROM offers WHERE property_key = ANY($1::text[]) AND created_at > now() - interval '90 days' AND status <> 'withdrawn' ORDER BY created_at DESC", [kList])).rows;
+      const os = (await p.query("SELECT id, property_key, property_address, lead_name, offer_pw, status, paid_at, created_at, decided_at, data FROM offers WHERE property_key = ANY($1::text[]) AND created_at > now() - interval '90 days' AND status NOT IN ('withdrawn', 'informal') ORDER BY created_at DESC", [kList])).rows;
       if (vs.length || os.length) {
         const nm = function (n) { const w = String(n || '').trim().split(/\s+/); return w[0] ? w[0] + (w[1] ? ' ' + w[w.length - 1][0] + '.' : '') : 'An applicant'; };
         const byProp = {};
@@ -10394,7 +10394,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function offerForLandlord(o) {
     const d = o.data || {}, m = d.money || {}, rtr = d.rtr || {};
     const first = function (n) { const w = String(n || '').trim().split(/\s+/); return w.length > 1 ? w[0] + ' ' + w[w.length - 1].charAt(0) + '.' : w[0] || ''; };
-    return { ok: true, ref: 'OF' + String(o.id).padStart(4, '0'), property: o.property_address, created_at: o.created_at, status: o.status,
+    return { ok: true, informal: !!d.informal, ref: 'OF' + String(o.id).padStart(4, '0'), property: o.property_address, created_at: o.created_at, status: o.status,
       offer_pw: Number(o.offer_pw), pcm: m.pcm || 0, move_in: d.move_in || null, stay: d.stay || '', holding_paid: !!o.paid_at, asking_pcm: Number(d.asking_pcm) || null,
       tenants: (d.tenants || []).map(function (t, i) { const r = rtr[i + 1]; return { name: first(t.name), income: t.income_type || '', work: [t.position, t.company].filter(Boolean).join(' at '), employment: t.employment_type || '', salary: t.salary ? Number(String(t.salary).replace(/[£,\s]/g, '')) || null : null,
         study: [t.course, t.university].filter(Boolean).join(', '), status: t.residency_status || '', guarantor: t.g_name ? { relation: t.g_relation || '', homeowner: t.g_homeowner || '', income: t.g_salary ? Number(String(t.g_salary).replace(/[£,\s]/g, '')) || null : null } : null,
@@ -10424,17 +10424,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Banner
     page.drawRectangle({ x: 0, y: H - 96, width: W, height: 96, color: C.navy });
     page.drawText('RESIDENTIAL REALTORS', { x: M, y: H - 40, size: 10, font: B, color: C.white });
-    page.drawText(safe('Offer received - for the landlord'), { x: M, y: H - 66, size: 18, font: B, color: C.white });
+    page.drawText(safe(v.informal ? 'Possible offer - for the landlord' : 'Offer received - for the landlord'), { x: M, y: H - 66, size: 18, font: B, color: C.white });
     page.drawText(safe('Ref ' + v.ref + ' \xB7 ' + dayOf(v.created_at)), { x: M, y: H - 84, size: 9, font: F, color: C.white });
     y = H - 120;
     para(v.property, 13, B, C.ink);
     y -= 4;
-    head('The offer');
+    if (v.informal) { y -= 4; para('An applicant has been in touch with our office and would like to know whether you would consider the offer below before they make a formal offer. Nothing has been signed or paid yet - we would just like your thoughts.', 10, F, C.soft); }
+    head(v.informal ? 'The possible offer' : 'The offer');
     row('Rent offered', v.pcm ? money(v.pcm) + ' a month' + (v.offer_pw ? ' (' + money(v.offer_pw) + ' a week)' : '') : '');
     if (v.asking_pcm) row('Asking rent', money(v.asking_pcm) + ' a month');
     row('Move-in date', dayOf(v.move_in) || 'To be agreed');
     row('Length of tenancy', v.stay);
-    row('Holding deposit', v.holding_paid ? 'Received by us' : 'Not received yet');
+    if (!v.informal) row('Holding deposit', v.holding_paid ? 'Received by us' : 'Not received yet');
     row('Number of applicants', String(v.tenants.length || ''));
     v.tenants.forEach(function (t, i) {
       head('Applicant ' + (i + 1) + (t.name ? ' - ' + t.name : ''));
@@ -10445,12 +10446,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (v.conditions.length) { head('Conditions asked for'); v.conditions.forEach(function (c, i) { para((i + 1) + '. ' + c.text + (c.status === 'yes' ? ' (agreed)' : c.status === 'no' ? ' (not agreed)' : ''), 10); }); }
     if (v.about) { head('About the applicants'); para(v.about, 10); }
     head('Next step');
-    para('Please let us know whether you would like to accept this offer' + (link ? ' - you can see it and answer online at:' : '.'), 10);
+    para((v.informal ? 'Please let us know whether you would accept an offer like this' : 'Please let us know whether you would like to accept this offer') + (link ? ' - you can see it and answer online at:' : '.'), 10);
     if (link) para(link, 10, B, hex('1D3FAE'));
     y -= 6;
     para('For their privacy, the applicants\' phone numbers, email addresses, dates of birth and ID documents are kept by Residential Realtors and are not included in this summary. We check right to rent and references before the tenancy starts.', 8.5, F, C.soft);
     pdf.getPages().forEach(function (pg, i, all) { pg.drawText(safe('Residential Realtors \xB7 28-30 Harper Road, London SE1 6AD \xB7 0207 096 8131 \xB7 info@residentialrealtors.co.uk' + (all.length > 1 ? '   Page ' + (i + 1) + ' of ' + all.length : '')), { x: M, y: 26, size: 7.5, font: F, color: C.soft }); });
-    return { bytes: await pdf.save(), name: 'Offer ' + v.ref + ' - for the landlord.pdf' };
+    return { bytes: await pdf.save(), name: (v.informal ? 'Possible offer ' : 'Offer ') + v.ref + ' - for the landlord.pdf' };
   }
   function offerReviewLink(tok) { return (OFFER_ORIGIN || PUBLIC_URL) + '/offer/review/' + tok; }
   async function offerLandlordToken(p, req, o) {
@@ -10493,7 +10494,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const resp = { answer: ans, note: str(b.note, 1000) || '', name: str(b.name, 120) || '', at: new Date().toISOString() };
     const said = { accept: 'accepts the offer', decline: 'declines the offer', discuss: 'would like to discuss the offer' }[ans];
     await p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_response', $2::jsonb), log = log || $3::jsonb WHERE id = $1", [o.id, JSON.stringify(resp), JSON.stringify([offerLog(req, 'Landlord' + (resp.name ? ' (' + resp.name + ')' : '') + ' ' + said + (resp.note ? ': ' + resp.note : ''), 'landlord')])]);
-    offerAlert({ title: 'Landlord ' + (ans === 'accept' ? 'accepts' : ans === 'decline' ? 'declines' : 'wants to discuss') + ': ' + shortAddrText(o.property_address), message: 'OF' + String(o.id).padStart(4, '0') + ' · ' + gbp(o.offer_pw) + ' pw' + (resp.note ? ' — ' + resp.note.slice(0, 120) : ''), tags: [ans === 'accept' ? 'white_check_mark' : ans === 'decline' ? 'x' : 'speech_balloon'] }).catch(function () {});
+    offerAlert({ title: 'Landlord ' + (ans === 'accept' ? ((o.data || {}).informal ? 'would accept' : 'accepts') : ans === 'decline' ? ((o.data || {}).informal ? 'wouldn’t accept' : 'declines') : 'wants to discuss') + ((o.data || {}).informal ? ' (informal offer)' : '') + ': ' + shortAddrText(o.property_address), message: 'OF' + String(o.id).padStart(4, '0') + ' · ' + gbp(o.offer_pw) + ' pw' + (resp.note ? ' — ' + resp.note.slice(0, 120) : ''), tags: [ans === 'accept' ? 'white_check_mark' : ans === 'decline' ? 'x' : 'speech_balloon'] }).catch(function () {});
     res.json({ ok: true });
   }));
 
@@ -10507,6 +10508,38 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const dec = Object.assign({}, (o.data || {}).cond_decisions || {}); if (v) dec[i] = v; else delete dec[i];
     await p.query("UPDATE offers SET data = data || jsonb_build_object('cond_decisions', $2::jsonb), log = log || $3::jsonb WHERE id = $1", [id, JSON.stringify(dec), JSON.stringify([offerLog(req, 'Condition "' + list[i].text.slice(0, 80) + '" ' + (v === 'yes' ? 'accepted' : v === 'no' ? 'not accepted' : 'set back to undecided'))])]);
     res.json({ ok: true, conditions: offerConds(Object.assign({}, o.data, { cond_decisions: dec })) });
+  }));
+  // An informal offer, typed in by staff (e.g. someone who came into the office), to sound out the landlord before
+  // the applicant makes a formal offer. Kept with the offers (status 'informal', data.informal) but left out of
+  // counts, reminders and the landlord's portal; no applicant contact details are asked for or kept.
+  app.post('/api/admin/offers/informal', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = parseInt(b.id, 10) || 0, addr = str(b.property, 400);
+    if (!addr) return res.status(400).json({ ok: false, error: 'property' });
+    const num = function (v) { return Number(String(v == null ? '' : v).replace(/[£,\s]/g, '')) || 0; };
+    let pcm = num(b.pcm); const pw = num(b.pw); if (!pcm && pw) pcm = Math.round(pw * 52 / 12 * 100) / 100;
+    if (!(pcm > 0) || pcm > 1000000) return res.status(400).json({ ok: false, error: 'rent' });
+    const tenants = (Array.isArray(b.applicants) ? b.applicants : []).slice(0, 8).map(function (a) { a = a || {}; return { name: str(a.name, 80) || '', income_type: str(a.income, 60) || '', position: str(a.work, 160) || '', employment_type: str(a.employment, 60) || '',
+      salary: num(a.salary) ? String(num(a.salary)) : '', residency_status: str(a.status, 80) || '', g_name: a.guarantor ? 'Guarantor' : '', g_relation: a.guarantor ? str(a.g_relation, 60) || '' : '', g_homeowner: a.guarantor ? str(a.g_homeowner, 20) || '' : '', g_salary: a.guarantor && num(a.g_salary) ? String(num(a.g_salary)) : '' }; })
+      .filter(function (t) { return t.name || t.position || t.income_type; });
+    const move = /^\d{4}-\d{2}-\d{2}$/.test(String(b.move_in || '')) ? String(b.move_in) : null;
+    const av = (await p.query('SELECT id, address, rent_pcm, status, updated_at FROM available_props WHERE rent_pcm > 0')).rows;
+    const asking = await offerAsking(p, addr, av);
+    const data = { informal: true, money: { pcm: pcm }, move_in: move, stay: str(b.stay, 60) || '', tenants: tenants, conditions: String(b.conditions || '').split(/\n+/).map(function (x) { return x.trim().slice(0, 300); }).filter(Boolean).slice(0, 12),
+      about: str(b.about, 2000) || '', asking_pcm: asking || null, made_by: (req.user && req.user.name) || 'Office', cond_decisions: {} };
+    const lead = (tenants[0] && tenants[0].name) || 'Informal offer', opw = Math.round(pcm * 12 / 52 * 100) / 100;
+    if (id) {
+      const r = await p.query("UPDATE offers SET property_address = $2, property_key = $3, offer_pw = $4, lead_name = $5, data = data || $6::jsonb, log = log || $7::jsonb WHERE id = $1 AND status = 'informal' RETURNING id",
+        [id, addr, propKey(addr), opw, lead, JSON.stringify(data), JSON.stringify([offerLog(req, 'Informal offer changed')])]);
+      if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+      return res.json({ ok: true, id: id });
+    }
+    const r = await p.query("INSERT INTO offers (property_address, property_key, lead_name, offer_pw, data, status, seen_at, log) VALUES ($1, $2, $3, $4, $5, 'informal', now(), $6) RETURNING id",
+      [addr, propKey(addr), lead, opw, JSON.stringify(data), JSON.stringify([offerLog(req, 'Informal offer typed in to sound out the landlord')])]);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  app.post('/api/admin/offers/informal/:id/delete', withDb(async function (p, req, res) {
+    const r = await p.query("DELETE FROM offers WHERE id = $1 AND status = 'informal' RETURNING id", [jobId(req)]);
+    res.json({ ok: !!r.rows.length });
   }));
   app.post('/api/admin/offers/:id', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req), sets = [], vals = [id], notes = [], dataSets = [];
