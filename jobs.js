@@ -14916,6 +14916,24 @@ document.querySelectorAll('.lcu').forEach(function(box){
       qualifies: qualifies, close: close, take_off: qualifies ? Math.min(outside - limit, outside - inside + 1) : 0, add_near: qualifies ? outside - inside + 1 : 0,
       by_radius: [1, 1.5, 2, 3, 5].map(function (mi) { const o = live.filter(function (x) { return x.dist == null || x.dist > mi; }).length; return { miles: mi, outside: o, inside: live.length - o, risk: fails(o, live.length - o) }; }) };
   }
+  // How many live lettings adverts (with a known place) sit within each radius from 0.5 to 3 miles — kept each day so
+  // Rightmove's own counts (the near/far split in its emails) can be matched to the radius it really uses.
+  const RS_RADII = []; for (let r = 5; r <= 30; r++) RS_RADII.push(r / 10);
+  function rsRadii(list) { const live = list.filter(function (x) { return !x.agreed && x.dist != null; }), o = {}; RS_RADII.forEach(function (r) { o[r.toFixed(1)] = live.filter(function (x) { return x.dist <= r; }).length; }); return { n: live.length, in: o }; }
+  // Rightmove's reported split (near / far over a period, entered by a manager from its email) → the radius that gives the
+  // same split for our adverts: from the days recorded in that period if there are any, else from today's adverts.
+  function rsCalibrate(rep, hist, list) {
+    const near = Number(rep && rep.near), far = Number(rep && rep.far);
+    if (!(near >= 0) || !(far >= 0) || near + far === 0) return null;
+    const share = near / (near + far), days = Object.keys(hist || {}).filter(function (d) { return (!rep.from || d >= rep.from) && (!rep.to || d <= rep.to) && hist[d] && hist[d].r && hist[d].r.n; });
+    let rows, basis;
+    if (days.length) { basis = 'days'; rows = RS_RADII.map(function (r) { const k = r.toFixed(1); return { r: r, share: days.reduce(function (a, d) { return a + hist[d].r.in[k] / hist[d].r.n; }, 0) / days.length }; }); }
+    else { const cur = rsRadii(list); if (!cur.n) return { near: near, far: far, basis: 'none' }; basis = 'today'; rows = RS_RADII.map(function (r) { return { r: r, share: cur.in[r.toFixed(1)] / cur.n }; }); }
+    // Every radius whose share of near adverts is within half an advert's worth of Rightmove's, and the closest one.
+    const tol = 0.5 / (near + far), best = rows.slice().sort(function (a, b) { return Math.abs(a.share - share) - Math.abs(b.share - share); })[0];
+    const ok = rows.filter(function (x) { return Math.abs(x.share - share) <= tol + 1e-9; }).map(function (x) { return x.r; });
+    return { near: near, far: far, from: rep.from || null, to: rep.to || null, basis: basis, days: days.length, best: best.r, low: ok.length ? Math.min.apply(null, ok) : best.r, high: ok.length ? Math.max.apply(null, ok) : best.r, exact: ok.length > 0 };
+  }
   // Averages over the days recorded (Rightmove judges the daily average over its review period, not one day).
   function rsAvg(hist, from, to, k) {
     const days = Object.keys(hist || {}).filter(function (d) { return d >= from && d <= to && hist[d] && hist[d][k] != null; });
@@ -14950,11 +14968,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const avg14 = rsAvg(hist, addDaysIso(today, -13), today, 'l'), avg90 = rsAvg(hist, addDaysIso(today, -89), today, 'l');
     const review = set.review_from && today >= set.review_from ? rsAvg(hist, set.review_from, set.review_to || today, 'l') : null;
     const avgFails = function (a, lim) { return !!(a && a.outside > lim && a.outside >= a.inside); };
+    const calib = rsCalibrate(set.rm_report, hist, list);
     // Stale = no successful read of our Rightmove adverts for over a day (a one-off failed check doesn't count).
     const okAt = v && (v.ok_at || (!v.error && v.at)), stale = !okAt || Date.now() - Date.parse(okAt) > 26 * 3600000;
     const sAge = vs && vs.at && !vs.error ? Date.now() - Date.parse(vs.at) : Infinity;
     return Object.assign({ checked_at: v ? v.at : null, ok_at: okAt || null, error: v ? v.error : null, stale: stale, office: office, radius: radius, review_from: set.review_from, review_to: set.review_to,
-      total: list.length, over: m.take_off, items: list,
+      total: list.length, over: m.take_off, items: list, calib: calib, rm_report: set.rm_report || null, radii: rsRadii(list),
       avg14: avg14, avg90: avg90, review: review, avg_risk: avgFails(avg14, limit) || avgFails(avg90, limit) || avgFails(review, limit),
       sales: Object.assign({ checked_at: vs ? vs.at : null, error: vs ? vs.error : null, stale: !vs || sAge > 30 * 3600000, total: slist.length, items: slist,
         avg14: rsAvg(hist, addDaysIso(today, -13), today, 's') }, sm),
@@ -14980,6 +14999,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.radius != null) { const r = Number(b.radius); if (!(r > 0 && r <= 50)) return res.status(400).json({ ok: false, error: 'radius' }); v.radius = r; }
     if (b.limit != null) { const l = parseInt(b.limit, 10); if (!(l >= 0 && l <= 500)) return res.status(400).json({ ok: false, error: 'limit' }); v.limit = l; }
     if (b.sales_limit != null && b.sales_limit !== '') { const l = parseInt(b.sales_limit, 10); if (!(l >= 0 && l <= 500)) return res.status(400).json({ ok: false, error: 'limit' }); v.sales_limit = l; }
+    if (b.rm_report !== undefined) {
+      const q = b.rm_report || {}, n = parseInt(q.near, 10), fr = parseInt(q.far, 10), day = function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(String(x || '')) ? String(x) : null; };
+      v.rm_report = n >= 0 && fr >= 0 && n + fr > 0 && n + fr < 2000 ? { near: n, far: fr, from: day(q.from), to: day(q.to), at: new Date().toISOString() } : null;
+    }
     if (b.sales_branch !== undefined) v.sales_branch = /^\d{3,9}$/.test(String(b.sales_branch).trim()) ? String(b.sales_branch).trim() : null;
     ['review_from', 'review_to'].forEach(function (k) { if (b[k] !== undefined) v[k] = /^\d{4}-\d{2}-\d{2}$/.test(String(b[k])) ? String(b[k]) : null; });
     await p.query("INSERT INTO app_settings (key, value) VALUES ('rm_stock', $1) ON CONFLICT (key) DO UPDATE SET value = app_settings.value || $1", [JSON.stringify(v)]);
@@ -14995,7 +15018,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const st = await rmStock(p); rsDay = day;
       if (!st.stale) {
         const h = (((await p.query("SELECT value FROM app_settings WHERE key = 'rm_stock_hist'")).rows[0] || {}).value || {}).d || {};
-        h[day] = { l: { o: st.outside, i: st.inside }, s: st.sales.stale ? null : { o: st.sales.outside, i: st.sales.inside } };
+        h[day] = { l: { o: st.outside, i: st.inside }, s: st.sales.stale ? null : { o: st.sales.outside, i: st.sales.inside }, r: st.radii };
         Object.keys(h).sort().slice(0, -120).forEach(function (k) { delete h[k]; });
         await p.query("INSERT INTO app_settings (key, value) VALUES ('rm_stock_hist', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ d: h })]);
       }
