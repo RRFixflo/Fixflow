@@ -10014,6 +10014,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     });
     res.json({ ok: true, items: items });
   }));
+  // The asking (advertised) rent of the property an offer is for: our available list — the same property key, else the
+  // same home written differently — preferring one still available, then the most recently updated (let ones count too).
+  async function offerAsking(p, address, rows) {
+    const list = rows || (await p.query('SELECT id, address, rent_pcm, status, updated_at FROM available_props WHERE rent_pcm > 0')).rows;
+    const k = propKey(String(address || '')), ap = addrParts(address);
+    let hit = list.filter(function (a) { return propKey(a.address) === k; });
+    if (!hit.length && ap.nums.length) hit = list.filter(function (a) { return sameHomeVc(ap, addrParts(a.address)); });
+    hit.sort(function (a, b) { return ((b.status === 'available') - (a.status === 'available')) || (new Date(b.updated_at) - new Date(a.updated_at)); });
+    return hit[0] ? Number(hit[0].rent_pcm) : null;
+  }
   app.post('/api/offers', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const b = req.body || {};
@@ -10074,7 +10084,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (files.length && !n) return res.status(400).json({ ok: false, error: 'ids', tenant: i + 1 });
       delete tenants[i]._ids;
     }
+    if (!advertPcm) advertPcm = await offerAsking(p, address).catch(function () { return null; });
     const data = {
+      asking_pcm: advertPcm || null,
       per: per, offer_entered: amt, max_entered: maxAmt || null, max_pw: maxPw, tenants_count: parseInt(b.tenants_count, 10) || tenants.length, guarantors_count: parseInt(b.guarantors_count, 10) || 0,
       move_in: isoDay(b.move_in) || null, stay: s(b.stay, 80), rent_frequency: 'Monthly', about: s(b.about, 3000),
       conditions: (Array.isArray(b.conditions) ? b.conditions : []).slice(0, 15).map(function (c) { return s(c, 300); }).filter(Boolean),
@@ -10332,6 +10344,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query(`SELECT o.id, o.created_at, o.property_address, o.property_key, o.lead_name, o.lead_email, o.lead_phone, o.offer_pw, o.data, o.status, o.decided_at, o.paid_at, o.seen_at, o.log, o.track_token,
         coalesce((SELECT json_agg(json_build_object('id', d.id, 'tenant_no', d.tenant_no, 'name', d.name, 'mime', d.mime, 'size', length(d.data)) ORDER BY d.id) FROM offer_docs d WHERE d.offer_id = o.id), '[]') AS docs
       FROM offers o ORDER BY o.id DESC LIMIT 500`);
+    // The asking rent: saved with the offer when it came in, else looked up on the available list now.
+    const av = (await p.query('SELECT id, address, rent_pcm, status, updated_at FROM available_props WHERE rent_pcm > 0')).rows;
+    for (const o of r.rows) { const d = o.data || {}; o.asking_pcm = Number(d.asking_pcm) > 0 ? Number(d.asking_pcm) : await offerAsking(p, o.property_address, av); }
     res.json({ ok: true, offers: r.rows.map(function (o) { o.ref = 'OF' + String(o.id).padStart(4, '0'); if (o.data) delete o.data.ip; return o; }) });
   }));
   // A tracking link for an offer made before links existed (made on first ask).
