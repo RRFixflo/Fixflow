@@ -10424,7 +10424,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Banner
     page.drawRectangle({ x: 0, y: H - 96, width: W, height: 96, color: C.navy });
     page.drawText('RESIDENTIAL REALTORS', { x: M, y: H - 40, size: 10, font: B, color: C.white });
-    page.drawText(safe(v.informal ? 'Possible offer - for the landlord' : 'Offer received - for the landlord'), { x: M, y: H - 66, size: 18, font: B, color: C.white });
+    page.drawText(safe('Offer received - for the landlord'), { x: M, y: H - 66, size: 18, font: B, color: C.white });
     page.drawText(safe('Ref ' + v.ref + ' \xB7 ' + dayOf(v.created_at)), { x: M, y: H - 84, size: 9, font: F, color: C.white });
     y = H - 120;
     para(v.property, 13, B, C.ink);
@@ -10451,7 +10451,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     y -= 6;
     para('For their privacy, the applicants\' phone numbers, email addresses, dates of birth and ID documents are kept by Residential Realtors and are not included in this summary. We check right to rent and references before the tenancy starts.', 8.5, F, C.soft);
     pdf.getPages().forEach(function (pg, i, all) { pg.drawText(safe('Residential Realtors \xB7 28-30 Harper Road, London SE1 6AD \xB7 0207 096 8131 \xB7 info@residentialrealtors.co.uk' + (all.length > 1 ? '   Page ' + (i + 1) + ' of ' + all.length : '')), { x: M, y: 26, size: 7.5, font: F, color: C.soft }); });
-    return { bytes: await pdf.save(), name: (v.informal ? 'Possible offer ' : 'Offer ') + v.ref + ' - for the landlord.pdf' };
+    return { bytes: await pdf.save(), name: 'Offer ' + v.ref + ' - for the landlord.pdf' };
   }
   function offerReviewLink(tok) { return (OFFER_ORIGIN || PUBLIC_URL) + '/offer/review/' + tok; }
   async function offerLandlordToken(p, req, o) {

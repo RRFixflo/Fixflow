@@ -14542,7 +14542,7 @@
   });
   function offSendMail(mail){
     if (meta.canEmail) { composeMail({ to: mail.to, subject: mail.subject, body: mail.body, title: mail.offerId ? '✉ Email the landlord — offer received' : undefined, offerLandlordId: mail.offerId || null, onSent: mail.offerId ? function(){ loadOffers(); } : undefined,
-      files: mail.offerId ? [{ name: (/^Possible/.test(mail.subject) ? 'Possible offer' : 'Offer summary') + ' for the landlord (PDF, no contact details)', url: mail.pdf }] : undefined }); return; }
+      files: mail.offerId ? [{ name: 'Offer summary' + ' for the landlord (PDF, no contact details)', url: mail.pdf }] : undefined }); return; }
     var coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
     if (coarse) { openMailto('mailto:' + mail.to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(mail.subject) + '&body=' + encodeURIComponent(mail.body)); return; }
     var blob = emlFile({ to: mail.to.join(', '), subject: mail.subject, body: mail.body }, []), a = document.createElement('a');
@@ -14591,7 +14591,7 @@
       var ib = 'Dear ' + (first || 'Landlord') + ',\n\nRE: ' + o.property_address + '\n\nWe have ' + (n > 1 ? n + ' applicants' : 'an applicant') + ' interested in your property who would like to know whether you would consider the following offer before making a formal one:\n\nRent: £' + Math.round(pcm) + ' pcm\nMove date: ' + (d.move_in ? ukDay(d.move_in) : 'To be agreed') + (d.stay ? '\nTerm: ' + d.stay : '') +
         '\n\nA summary is attached (PDF), with what they do for work and their income. You can also see it and let us know your thoughts here: ' + info.link +
         '\n\nNothing has been signed or paid yet — if you are happy in principle, we will ask them to make a formal offer and pay the holding deposit. For their privacy, their contact details stay with us.\n\nLook forward to hearing from you.' + mailSignoff().replace('\n\nRegards,', '\n\nKind regards,');
-      return { to: ll.email ? [ll.email] : [], subject: 'Possible offer – ' + o.property_address, body: ib, file: 'Possible offer for landlord - ' + o.ref, offerId: o.id, pdf: info.pdf || ('/api/admin/offers/' + o.id + '/landlord.pdf') };
+      return { to: ll.email ? [ll.email] : [], subject: 'Offer received – ' + o.property_address, body: ib, file: 'Offer for landlord - ' + o.ref, offerId: o.id, pdf: info.pdf || ('/api/admin/offers/' + o.id + '/landlord.pdf') };
     }
     var body = 'Dear ' + (first || 'Landlord') + ',\n\nRE: ' + o.property_address + '\n\nI am delighted to inform you we have received a formal offer on your property.\n\nOffer Details:\nPrice: £' + Math.round(pcm) + ' pcm\nMove Date: ' + ukDay(d.move_in) + (d.stay ? '\nTerm: ' + d.stay : '') +
       '\n\nA summary of the offer is attached (PDF). You can also see the full details here — the applicants, their work and income, guarantors and any conditions — and tell us whether you accept: ' + info.link +
