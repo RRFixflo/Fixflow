@@ -537,8 +537,10 @@
   .oc-counter.wait { background: var(--dk-bg-fffaeb, #FFFAEB); border-color: var(--dk-bd-fedf89, #FEDF89); }
   .oc-counter.old { opacity: .7; }
   .staff-mode #askMode, .staff-mode #askIdeas, .staff-mode #askRem, .staff-mode #askLearn, .staff-mode #askDriveBtn, .staff-mode #askEmailHelp { display: none !important; }
-  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#navAppr):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#navAppr):not(#myPwBtn):not(#navProps):not(#navTcy), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
+  .staff-mode .ro-hide { display: none !important; }
+  .ro-note { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; font-size: .86rem; background: var(--dk-bg-eef4ff, #EEF4FF); border: 1px solid var(--dk-bd-c7d7fe, #C7D7FE); color: var(--dk-fg-1d3a8a, #1D3A8A); }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: var(--dk-fg-5f6673, #5f6673); font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
   .side .nav.nav-team { background: linear-gradient(135deg, rgba(217,38,46,.22), rgba(255,180,183,.10)); border: 1px solid rgba(255,180,183,.45); color: #fff; margin: 4px 0 6px; font-weight: 700; }
@@ -549,7 +551,7 @@
   .side .nav.nav-team.on, .side .nav.nav-team:hover { background: linear-gradient(135deg, rgba(217,38,46,.45), rgba(255,180,183,.18)); }
   .staff-tabs button.st-team { color: var(--dk-fg-a3141b, #a3141b); } .staff-tabs button.st-team.on { background: #a3141b; color: #fff; }
   .st-deployed { font-size: .78rem; color: var(--ink-soft); margin: 0 0 8px; }
-  .staff-tabs { display: flex; gap: 6px; margin: 0 0 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; width: fit-content; }
+  .staff-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; width: fit-content; max-width: 100%; }
   .staff-tabs button { border: 0; background: none; font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 9px; cursor: pointer; color: var(--ink-soft); } .staff-tabs button.on { background: var(--primary, #0B1F3A); color: var(--on-ink, #fff); }
   .lt-card.lt-flash { box-shadow: 0 0 0 3px #12b76a; transition: box-shadow .3s; }
   .lt-editing { background: var(--dk-bg-fff6e5, #fff6e5); border: 1px solid var(--dk-bd-f3d9a8, #f3d9a8); color: var(--dk-fg-7a4d00, #7a4d00); border-radius: 10px; padding: 10px 12px; font-size: .88rem; margin: 0 0 10px; }
@@ -824,6 +826,11 @@
   .rs-m { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: .86rem; }
   .rs-tag { display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 999px; font-size: .72rem; font-weight: 600; }
   .rs-tag.dream { background: var(--dk-bg-fef0c7, #FEF0C7); color: var(--dk-fg-93370d, #93370D); } .rs-tag.none { background: var(--dk-bg-fee4e2, #FEE4E2); color: var(--dk-fg-b42318, #B42318); } .rs-tag.ours { background: var(--dk-bg-ecfdf3, #ECFDF3); color: var(--dk-fg-067647, #067647); }
+  .vo-wrap { display: flex; flex-direction: column; gap: 6px; } .vo-h { font-weight: 600; font-size: .88rem; }
+  .vo-t { padding: 7px 9px; border: 1px solid var(--line, #E4E7EC); border-radius: 10px; display: flex; flex-direction: column; gap: 4px; }
+  label.vo-chk, .vo-chk { display: flex !important; flex-direction: row !important; align-items: center; gap: 8px; font-size: .88rem; cursor: pointer; text-align: left; } .vo-chk input { flex: none; width: auto !important; margin: 0; }
+  .vo-c { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: .84rem; } .vo-c a { overflow-wrap: anywhere; }
+  .vo-wa { background: var(--dk-bg-dcfce7, #DCFCE7); color: var(--dk-fg-166534, #166534); border: 1px solid var(--dk-bd-86efac, #86EFAC); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: .8rem; cursor: pointer; }
   .rs-cal { margin: 8px 0; padding: 8px 10px; border-radius: 10px; font-size: .84rem; background: var(--dk-bg-eef4ff, #EEF4FF); border: 1px solid var(--dk-bd-c7d7fe, #C7D7FE); } .rs-cal .btn { margin: 4px 0 0; }
   .rs-set { margin-top: 10px; } .rs-set summary { cursor: pointer; font-size: .84rem; font-weight: 600; }
   .rs-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: end; } .rs-form label { font-size: .78rem; display: flex; flex-direction: column; gap: 2px; } .rs-form .btn { grid-column: 1 / -1; justify-self: start; margin: 0; }
@@ -2342,7 +2349,7 @@
         </details>
       </div>
 
-      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="cal">🗓 Calendar</button><button type="button" data-stab="appl">🙋 Applicants <span class="st-n" id="stApplN" hidden></span></button><button type="button" data-stab="crm">📇 Landlord enquiries <span class="st-n" id="stCrmN" hidden></span></button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="web" id="stWeb" hidden>📈 Website visitors</button><button type="button" data-stab="calls">📞 Calls</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
+      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="cal">🗓 Calendar</button><button type="button" data-stab="appl">🙋 Applicants <span class="st-n" id="stApplN" hidden></span></button><button type="button" data-stab="crm">📇 Landlord enquiries <span class="st-n" id="stCrmN" hidden></span></button><button type="button" data-stab="props">🏢 Properties</button><button type="button" data-stab="tcy">🏠 Tenancies</button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="web" id="stWeb" hidden>📈 Website visitors</button><button type="button" data-stab="calls">📞 Calls</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
       <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto;max-width:100%;min-width:0"><option value="">Everyone</option></select><button type="button" class="btn small ghost" id="teamFeedMin">Minimise</button></div><div id="teamFeed"></div></div>
@@ -3591,6 +3598,7 @@
   // quietly try again a couple of times instead of showing an error.
   var AI_URL = /\/(assistant|ai-invoice|ai-email|licence-read|summaries|rtr\/read)$/;
   function api(method, url, body, tries){
+    if (method !== 'GET' && typeof roScope === 'function' && roScope() && !/\/api\/admin\/(email\/preview|viewing-contacts)/.test(url)) return roBlocked();
     if (body && typeof body === 'object') ['key_no', 'key_number'].forEach(function(k){ if (typeof body[k] === 'string') body[k] = body[k].toUpperCase(); });   // key numbers always in capitals
     if (AI_URL.test(url) && tries === undefined) {
       var again = function(n){ return api(method, url, body, n)['catch'](function(){ return { ok: false, error: 'network', status: 0 }; }).then(function(d){
@@ -5051,11 +5059,48 @@
   $('brandHome').addEventListener('click', goHome);
   $('brandHomeM').addEventListener('click', goHome);
 
+  var STAFF_VIEWS = ['web', 'calls', 'crm', 'appl', 'cal', 'offers', 'lt', 'sent', 'avail', 'team', 'who', 'props', 'tcy'], staffRoLoaded = false;
+  // ---------- Staff: Properties, Tenancies and the repairs opened from them are VIEW ONLY (the owner asked) ----------
+  // The server refuses every change from a staff sign-in; here nothing looks editable either: boxes can't be typed in,
+  // buttons that would change something are hidden, and any change that still gets through is stopped with a note.
+  function roScope(){ return staffMode && (view === 'props' || view === 'tcy' || ($('drawer') && !$('drawer').hidden)); }
+  var RO_KEEP = /(Search|Range|Period|From|To|Filter|Sort|Month|Year|Rday|Days)$/;
+  var RO_STRONG = /\b(send|email|whatsapp|message|delete|save|edit|remove|add|mark|upload|pay|refund|assign|invoice|quote|book|paste|needed|use)\b|✏|🗑|＋|📧|💸|📎|📣|^\s*[✕×]\s*$/i;
+  var RO_EDIT = /\b(new|undo|change|set|settings|start|notice|archive|restore|generate|make|create|renew|import|move|record|confirm|resend|reopen|complete|hand|tell|remind|correct|fix|merge|attach|report|clear|reset|use|update|rename|approve|accept|reject|decline|take|put)\b|↻|^\s*\+/i;
+  var RO_SAFE = /\b(open|view|back|download|show|hide|close|history|documents|account|statement|print|details|more|less|photos|tab)\b|⬇|📄|🖨|↗|›|‹/i;
+  function roApply(root){
+    if (!staffMode || !root) return;
+    root.querySelectorAll('input, select, textarea').forEach(function(el){ if (el.type === 'search' || RO_KEEP.test(el.id || '') || el.disabled) return; el.disabled = true; });
+    root.querySelectorAll('[contenteditable="true"]').forEach(function(el){ el.setAttribute('contenteditable', 'false'); });
+    root.querySelectorAll('button, a.btn, label.btn').forEach(function(el){
+      if (el.classList.contains('ro-hide') || el.hasAttribute('data-tab') || el.closest('.tabs, [role="tablist"]')) return;
+      // Option switches in a form (e.g. who holds the deposit): keep the chosen one showing, but they can't be pressed.
+      if (el.closest('.seg') && el.closest('#tcyDetail, #propDetail, #drawer')) { el.disabled = true; return; }
+      var t = (el.textContent || '') + ' ' + (el.getAttribute('title') || '');
+      if (RO_STRONG.test(t) || (RO_EDIT.test(t) && !RO_SAFE.test(t))) el.classList.add('ro-hide');
+    });
+  }
+  function roApplyAll(){
+    if (!staffMode) return;
+    ['propsView', 'tcyView', 'drawer'].forEach(function(id){ var r = $(id); if (!r) return; roApply(r);
+      if (id !== 'drawer' && !r.querySelector(':scope > .ro-note')) r.insertAdjacentHTML('afterbegin', '<div class="ro-note">👁 <b>View only</b> — you can look at every property and tenancy, but nothing here can be changed from a staff sign-in.</div>'); });
+  }
+  var roTimer = null;
+  try { new MutationObserver(function(){ if (!roScope() || roTimer) return; roTimer = setTimeout(function(){ roTimer = null; roApplyAll(); }, 60); }).observe(document.body, { childList: true, subtree: true }); } catch (e) {}
+  var roToastAt = 0;
+  var roClickAt = 0; document.addEventListener('click', function(){ roClickAt = Date.now(); }, true);
+  function roBlocked(){ if (Date.now() - roClickAt < 2000 && Date.now() - roToastAt > 4000) { roToastAt = Date.now(); toast('👁 View only — staff can’t change properties, tenancies or repairs'); } return Promise.resolve({ ok: false, error: 'view-only', status: 403 }); }
   function showView(v){
     if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
-    if (staffMode && v !== 'web' && v !== 'calls' && v !== 'crm' && v !== 'appl' && v !== 'cal' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
+    if (staffMode && STAFF_VIEWS.indexOf(v) === -1) {
+      // From Properties / Tenancies (view only), links to pages staff don't have (landlords, tenants, jobs…) stay put.
+      if (view === 'props' || view === 'tcy') { toast('👁 That page isn’t available on staff sign-ins'); return; }
+      v = 'avail';
+    }
+    // Staff: Properties and Tenancies need the property data, loaded the first time (view only).
+    if (staffMode && (v === 'props' || v === 'tcy') && !staffRoLoaded) { staffRoLoaded = true; var vv = v; loadContractors().then(loadJobs).then(function(){ if (view === 'props') { openPropKey ? renderProperty() : renderProps(); } if (view === 'tcy' && !openTcyId) tcyShowList(); roApplyAll(); }); }
     var prevView = view; view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -10294,7 +10339,7 @@
     var cx = e.target.closest('[data-vw-cx]');
     if (cx) { var gv = crmItem(cx), vw = gv && (gv.viewings || []).filter(function(v){ return String(v.id) === cx.dataset.vwCx; })[0]; if (!vw) return;
       var wrap = cx.closest('.vw-cx');
-      api('GET', '/api/admin/viewing-contacts?property=' + encodeURIComponent(vw.property_address || '')).then(function(c){ var vb = wrap.querySelector('.vo-box'); if (vb) vb.innerHTML = vwOthersHtml(c, true, ''); });
+      api('GET', '/api/admin/viewing-contacts?property=' + encodeURIComponent(vw.property_address || '')).then(function(c){ var vb = wrap.querySelector('.vo-box'); if (vb) vb.innerHTML = vwOthersHtml(c, true, '', { kind: 'cancelled', addr: vw.property_address, when: fmtWhen(vw.at) }); });
       wrap.innerHTML = '<b>Cancel this viewing?</b>' + (vw.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vw-cx-mail checked> Email them to let them know</label>' : '<span class="muted-note" style="margin:0">No email saved for them — remember to tell them.</span>') + '<div class="vo-box"></div><div class="row-actions" style="margin:0"><button type="button" class="btn small danger" data-vw-cx-go="' + vw.id + '">Yes, cancel it</button><button type="button" class="btn small ghost" data-vw-cx-no>Keep it</button></div>';
       return; }
     if (e.target.closest('[data-vw-cx-no]')) { renderCrm(); return; }
@@ -13469,12 +13514,46 @@
   }
   // The tenants living at the property and its landlord: ticks to email them about the viewing (on for a new booking).
   // vwOthersHtml is shared with the cancel boxes; the landlord never gets the applicant's details.
-  function vwOthersHtml(c, on, verb){
-    var t = (c && c.tenants) || [], l = c && c.landlord;
-    return (t.length ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vo="tenants"' + (on ? ' checked' : '') + '> 🏠 Email the tenants living there' + verb + ' <span class="muted-note" style="margin:0">(' + esc(t.map(function(x){ return x.name || x.email; }).join(', ')) + ')</span></label>' : '<span class="muted-note" style="margin:0">🏠 ' + ((c && c.occupants || []).length ? 'The tenants living there have no email saved.' : 'No tenants found for this address — type the full address with the flat / door number and postcode, or pick it from the suggestions (✅ shows the address our tenancy is under).') + '</span>') +
-      (l && l.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vo="landlord"> 🔑 Email the landlord' + verb + ' <span class="muted-note" style="margin:0">(' + esc(l.name || l.email) + ' — never the applicant’s details)</span></label>' : '<span class="muted-note" style="margin:0">🔑 ' + (l ? esc(l.name || 'The landlord') + ' has no email saved.' : 'No landlord linked to this property.') + '</span>');
+  // Everyone living there now with their full contact details: tick who gets the email (all ticked when "on"), a
+  // WhatsApp button per tenant with the message ready (time and address from the booking window, or the viewing being
+  // cancelled — ctx), and the landlord tick. Shared with the cancel boxes; the landlord never gets the applicant's details.
+  function vwOthersHtml(c, on, verb, ctx){
+    var occ = (c && c.occupants) || [], l = c && c.landlord, ctxA = ctx ? ' data-vo-ctx="' + esc(JSON.stringify(ctx)) + '"' : '';
+    var okE = function(e){ return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); };
+    var withMail = occ.filter(function(o){ return okE(o.email); });
+    var rows = occ.map(function(o, i){ var tel = o.phone ? String(o.phone).replace(/[^\d+]/g, '') : '', wa = o.phone ? waNumber(o.phone) : '';
+      return '<div class="vo-t">' + (okE(o.email) ? '<label class="vo-chk"><input type="checkbox" data-vo-t="' + esc(String(o.email).trim()) + '"' + (on ? ' checked' : '') + '> <b>' + esc(o.name || 'Tenant') + '</b></label>' : '<span class="vo-chk"><b>' + esc(o.name || 'Tenant') + '</b> <small class="muted-note" style="margin:0">no email</small></span>') +
+        '<div class="vo-c">' + (o.phone ? '<a href="tel:' + esc(tel) + '">📞 ' + esc(o.phone) + '</a>' : '') + (o.email ? '<a href="mailto:' + esc(o.email) + '">✉ ' + esc(o.email) + '</a>' : '') +
+        (wa ? '<button type="button" class="vo-wa" data-vo-wa="' + esc(wa) + '" data-vo-name="' + esc(String(o.name || '').trim().split(/\s+/)[0]) + '">💬 WhatsApp</button>' : '') + '</div></div>'; }).join('');
+    return '<div class="vo-wrap"' + ctxA + '>' + (occ.length ? '<div class="vo-h">🏠 Living there now' + (withMail.length ? ' — tick who to email' + verb + (withMail.length > 1 ? ' <button type="button" class="linkish" data-vo-all>All</button> · <button type="button" class="linkish" data-vo-none>None</button>' : '') : '') + '</div>' + rows +
+        (withMail.length ? '' : '<span class="muted-note" style="margin:0">None of them has an email saved — use WhatsApp or call.</span>')
+      : '<span class="muted-note" style="margin:0">🏠 No tenants found for this address — type the full address with the flat / door number and postcode, or pick it from the suggestions (✅ shows the address our tenancy is under).</span>') +
+      (l && l.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vo="landlord"> 🔑 Email the landlord' + verb + ' <span class="muted-note" style="margin:0">(' + esc(l.name || l.email) + ' — never the applicant’s details)</span></label>' : '<span class="muted-note" style="margin:0">🔑 ' + (l ? esc(l.name || 'The landlord') + ' has no email saved.' : 'No landlord linked to this property.') + '</span>') + '</div>';
   }
-  function vwOthersGet(box){ var g = function(k){ var i = box && box.querySelector('[data-vo="' + k + '"]'); return !!(i && i.checked); }; return { notify_tenants: g('tenants'), notify_landlord: g('landlord') }; }
+  function vwOthersGet(box){
+    var t = box ? Array.prototype.filter.call(box.querySelectorAll('[data-vo-t]'), function(i){ return i.checked; }).map(function(i){ return i.dataset.voT; }) : [];
+    var ll = box && box.querySelector('[data-vo="landlord"]');
+    return { notify_tenants: t.length > 0, tenant_emails: t, notify_landlord: !!(ll && ll.checked) };
+  }
+  // The WhatsApp message to a tenant: from the booking window (as it is now) or the viewing being cancelled.
+  function voWaText(btn){
+    var w = btn.closest('.vo-wrap'), ctx = {}; try { ctx = JSON.parse((w && w.dataset.voCtx) || '{}'); } catch (e) {}
+    var addr = ctx.addr, when = ctx.when, who = ctx.staff || '', kind = ctx.kind || 'booked';
+    if (!ctx.kind && $('cbModal') && !$('cbModal').hidden) {
+      addr = $('cbProp').value.trim(); var dt = $('cbDate').value, tm = $('cbTime').value;
+      when = dt ? new Date(dt + 'T' + (tm || '12:00')).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) + (tm ? ' at ' + tm : '') : '';
+      var so = $('cbStaff').selectedOptions && $('cbStaff').selectedOptions[0]; who = so ? so.textContent.trim() : ''; kind = cal.edit ? 'moved' : 'booked';
+    }
+    var first = btn.dataset.voName ? ' ' + btn.dataset.voName : '', short = String(addr || 'your home').split(',').slice(0, 2).join(','), staffFirst = who && !/^(owner|office|choose)/i.test(who) ? who.split(/\s+/)[0] : '';
+    return 'Hi' + first + ', this is Residential Realtors. ' + (kind === 'cancelled' ? 'The viewing we had arranged at ' + short + (when ? ' on ' + when : '') + ' has been cancelled — nobody will be coming.'
+      : (kind === 'moved' ? 'The viewing at ' + short + ' has moved to ' + when + '.' : 'We’ve arranged a viewing at ' + short + (when ? ' on ' + when : '') + '.') + (staffFirst ? ' ' + staffFirst + ' from our office will attend.' : '') + ' If this time isn’t convenient, please let us know on 0207 096 8131.') + ' Thank you.';
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('[data-vo-wa], [data-vo-all], [data-vo-none]'); if (!b) return;
+    e.preventDefault();
+    if (b.dataset.voWa) { window.open('https://wa.me/' + b.dataset.voWa + '?text=' + encodeURIComponent(voWaText(b)), '_blank', 'noopener'); return; }
+    var w = b.closest('.vo-wrap'); if (w) w.querySelectorAll('[data-vo-t]').forEach(function(i){ i.checked = b.hasAttribute('data-vo-all'); });
+  });
   var cbOthersT = null;
   function cbLoadOthers(on){
     var prop = $('cbProp').value.trim(), box = $('cbOthers');
@@ -13614,7 +13693,7 @@
     if ((b = e.target.closest('[data-vd-st="cancelled"]')) && !b.dataset.sure) {   // ask first, on screen (phones can block pop-ups)
       var bx = $('vdBody').querySelector('.vd-cx'); if (bx) bx.remove();
       b.closest('.row-actions').insertAdjacentHTML('afterend', '<div class="vd-cx"><b>Cancel this viewing?</b>' + (v.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vd-cx-mail checked> Email ' + esc(v.applicant || 'the applicant') + ' to let them know</label>' : '<span class="muted-note" style="margin:0">No email saved for them — remember to tell them.</span>') + '<div class="vo-box"></div><div class="row-actions" style="margin:0"><button type="button" class="btn small danger" data-vd-st="cancelled" data-sure="1">Yes, cancel it</button><button type="button" class="btn small ghost" data-vd-cx-no>Keep it</button></div></div>');
-      var vbx = $('vdBody').querySelector('.vd-cx .vo-box'); api('GET', '/api/admin/viewing-contacts?property=' + encodeURIComponent(v.property_address || '')).then(function(c){ if (vbx) vbx.innerHTML = vwOthersHtml(c, true, ''); });
+      var vbx = $('vdBody').querySelector('.vd-cx .vo-box'); api('GET', '/api/admin/viewing-contacts?property=' + encodeURIComponent(v.property_address || '')).then(function(c){ if (vbx) vbx.innerHTML = vwOthersHtml(c, true, '', { kind: 'cancelled', addr: v.property_address, when: fmtWhen(v.at) }); });
       return; }
     if (e.target.closest('[data-vd-cx-no]')) { e.target.closest('.vd-cx').remove(); return; }
     if ((b = e.target.closest('[data-vd-st]'))) { var cxm = $('vdBody').querySelector('[data-vd-cx-mail]'); api('POST', '/api/admin/viewings/' + v.id, Object.assign({ status: b.dataset.vdSt, notify: b.dataset.vdSt === 'cancelled' && !!(cxm && cxm.checked) }, b.dataset.vdSt === 'cancelled' ? vwOthersGet($('vdBody').querySelector('.vd-cx')) : {})).then(function(){ toast(b.dataset.vdSt === 'done' ? '✓ Marked done — add your feedback, and ask the applicant for theirs' : b.dataset.vdSt === 'cancelled' ? '✓ Viewing cancelled' + (cxm && cxm.checked ? ' — ' + (v.applicant || 'the applicant') + ' has been emailed' : '') : 'Updated'); if (b.dataset.vdSt === 'cancelled') loadCrm('poll'); v.status = b.dataset.vdSt; openViewing(v); calChanged(); }); return; }

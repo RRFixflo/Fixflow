@@ -2219,6 +2219,10 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && (path === '/calls' || path === '/calls/new' || path === '/calls/who')) return true;   // who has called (every member of staff)
     if ((method === 'GET' || method === 'PUT') && path === '/me/nav-order') return true;   // their own menu order
     if (method === 'POST' && (path === '/site-ignore' || path === '/site-name')) return true;   // managers only (checked in the route)   // Website visitors (managers only, checked in the route)
+    // Properties and Tenancies, view only (the owner asked): staff can read everything on those pages — GET only, so
+    // nothing there can be changed from a staff login (every POST / PUT / DELETE to these paths is refused).
+    if (method === 'GET' && (/^\/(jobs|tenancies|tenancy-docs|tenancy-payments|invoices|certificates|landlords|quotes|photos|email-files|notes|licence-pool|licence-registers|council-tax)(\/.*)?$/.test(path) ||
+      ['/property-info', '/rm-stock', '/tenant-notices', '/tenant-records', '/tenants', '/tenancy-settings', '/contractors', '/rent-board', '/statements', '/rent-recoveries', '/renewal-fees', '/cert-services', '/cert-requests', '/epc-lookup', '/licence-doc', '/licensing-schemes'].indexOf(path) !== -1)) return true;
     if (method === 'GET') return path === '/tenant-suggest' || path === '/landlord-suggest' || path === '/our-props' || path === '/viewing-contacts' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
@@ -8744,6 +8748,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const r = await sendEmail({ to: to, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: t, html: brandEmail(t, title) }).catch(function () { return { ok: false }; });
       logSent(req, to, [], 'info@residentialrealtors.co.uk', subject, t, r); return !!(r && r.ok !== false);
     };
+    // Only the tenants ticked in the window, when a list is given (else all of them).
+    if (Array.isArray(o.emails) && o.emails.length) { const pick = o.emails.map(function (e) { return String(e).toLowerCase().trim(); }); c.tenants = c.tenants.filter(function (x) { return pick.indexOf(String(x.email).toLowerCase().trim()) !== -1; }); }
     if (o.tenants && c.tenants.length) {
       const names = c.tenants.map(function (x) { return String(x.name || '').trim().split(/\s+/)[0]; }).filter(Boolean);
       const hi = 'Dear ' + (names.length ? names.join(' and ').replace(/ and (?=[^ ]+ and )/g, ', ') : 'tenant') + ',\n\n';
@@ -8797,7 +8803,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let emailed = false, others = null;
     const vrow = (await p.query('SELECT * FROM viewings WHERE id = $1', [r.rows[0].id])).rows[0];
     if (b.notify === true) emailed = await viewingMail(p, req, vrow, 'booked');
-    if (b.notify_tenants === true || b.notify_landlord === true) others = await viewingNotifyOthers(p, req, vrow, 'booked', { tenants: b.notify_tenants === true, landlord: b.notify_landlord === true, count: parseInt(b.count, 10) || 1 });
+    if (b.notify_tenants === true || b.notify_landlord === true) others = await viewingNotifyOthers(p, req, vrow, 'booked', { tenants: b.notify_tenants === true, emails: Array.isArray(b.tenant_emails) ? b.tenant_emails.slice(0, 20) : null, landlord: b.notify_landlord === true, count: parseInt(b.count, 10) || 1 });
     if (parseInt(b.lead_id, 10)) await crmLog(p, 'vr:' + parseInt(b.lead_id, 10), '🗓 Viewing booked: ' + new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · ' + addr.split(',').slice(0, 2).join(',') + ' · with ' + (str(b.staff, 120) || me), req, false);
     // Booking a viewing means someone has been in touch: every new enquiry of theirs is now contacted.
     if (parseInt(b.lead_id, 10)) { const g = await applGroup(p, parseInt(b.lead_id, 10)).catch(function () { return null; }); await p.query("UPDATE valuation_requests SET status = 'contacted', handled_at = now(), handled_by = $2 WHERE id = ANY($1) AND status = 'new'", [g && g.ids && g.ids.length ? g.ids : [parseInt(b.lead_id, 10)], req.user ? req.user.name : 'Office']); }
@@ -8864,7 +8870,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const readdr = !cancelled && !moved && String(now.property_address || '').trim() !== String(before.property_address || '').trim();
       if (readdr && now.lead_id) await crmLog(p, 'vr:' + now.lead_id, '🗓 Viewing address changed to ' + now.property_address, req, false);
       if (b.notify === true && (cancelled || moved || readdr)) emailed = await viewingMail(p, req, now, cancelled ? 'cancelled' : moved ? 'moved' : 'address');
-      if ((b.notify_tenants === true || b.notify_landlord === true) && (cancelled || moved)) var others = await viewingNotifyOthers(p, req, now, cancelled ? 'cancelled' : 'moved', { tenants: b.notify_tenants === true, landlord: b.notify_landlord === true });
+      if ((b.notify_tenants === true || b.notify_landlord === true) && (cancelled || moved)) var others = await viewingNotifyOthers(p, req, now, cancelled ? 'cancelled' : 'moved', { tenants: b.notify_tenants === true, emails: Array.isArray(b.tenant_emails) ? b.tenant_emails.slice(0, 20) : null, landlord: b.notify_landlord === true });
     }
     res.json({ ok: true, emailed: emailed, others: typeof others === 'undefined' ? null : others });
   }));
