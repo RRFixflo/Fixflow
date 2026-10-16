@@ -2519,13 +2519,14 @@ module.exports = function mountJobs(app, opts) {
     (await p.query('SELECT id, created_by, email, phone, name, property_address, signed_at, paid_at FROM pvr_reservations WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz', range)).rows.forEach(function (x) {
       mark(row(x.created_by).pvr, rk(x.email, x.phone, x.name, x.property_address, 'v' + x.id), { signed: !!x.signed_at, paid: !!x.paid_at });
     });
-    // Viewings by whoever does them (shared viewings — several applicants at one time and place — count once; each applicant counts in Applicants).
+    // Viewings by whoever does them: every applicant booked counts as one viewing (the owner asked) — several applicants
+    // at one time and place are several viewings; `slots` says how many separate trips that was.
     const nowMs = Date.now();
     (await p.query("SELECT id, at, staff, created_by, status, property_address, app_fb->>'interest' AS interest, app_fb_at FROM viewings WHERE at BETWEEN $1::timestamptz AND $2::timestamptz", range)).rows.forEach(function (v) {
       const w = row(v.staff || v.created_by).vw, slot = new Date(v.at).toISOString() + '|' + String(v.property_address || '').trim().toLowerCase();
       if (v.status === 'cancelled') { w.cancel++; return; }
       if (v.status === 'no_show') { w.noshow++; return; }
-      if (new Date(v.at).getTime() > nowMs) { w.ahead[slot] = 1; return; }
+      if (new Date(v.at).getTime() > nowMs) { w.ahead[slot] = (w.ahead[slot] || 0) + 1; return; }
       w.done[slot] = 1; w.apps++; if (v.app_fb_at) w.fb++; if (v.interest === 'yes') w.offer++;
     });
     const sum = function (b, f) { return Object.keys(b).filter(function (k) { return !f || b[k][f]; }).length; }, sends = function (b) { return Object.keys(b).reduce(function (a, k) { return a + b[k].n; }, 0); };
@@ -2533,7 +2534,7 @@ module.exports = function mountJobs(app, opts) {
       forms: { people: sum(x.forms), sends: sends(x.forms), opened: sum(x.forms, 'opened'), started: sum(x.forms, 'started'), offers: Math.max(sum(x.forms, 'offer'), sum(x.signed)), paid: sum(x.signed, 'paid') },
       terms: { people: sum(x.terms), sends: sends(x.terms), opened: sum(x.terms, 'opened'), signed: sum(x.terms, 'signed') },
       pvr: { people: sum(x.pvr), sends: sends(x.pvr), signed: sum(x.pvr, 'signed'), paid: sum(x.pvr, 'paid') },
-      vw: { done: Object.keys(x.vw.done).length, apps: x.vw.apps, ahead: Object.keys(x.vw.ahead).length, noshow: x.vw.noshow, cancel: x.vw.cancel, offer: x.vw.offer, fb: x.vw.fb } }; })
+      vw: { done: x.vw.apps, apps: x.vw.apps, slots: Object.keys(x.vw.done).length, ahead: Object.keys(x.vw.ahead).reduce(function (a, k) { return a + x.vw.ahead[k]; }, 0), ahead_slots: Object.keys(x.vw.ahead).length, noshow: x.vw.noshow, cancel: x.vw.cancel, offer: x.vw.offer, fb: x.vw.fb } }; })
       .sort(function (a, b) { return (b.vw.done + b.vw.ahead + b.forms.people + b.forms.offers + b.terms.people + b.terms.signed + b.pvr.people) - (a.vw.done + a.vw.ahead + a.forms.people + a.forms.offers + a.terms.people + a.terms.signed + a.pvr.people); });
     res.json({ ok: true, from: from, to: to, people: list });
   }));
