@@ -540,6 +540,9 @@
   .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#navAppr):not(#myPwBtn):not(#navProps):not(#navTcy), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .staff-mode .ro-hide { display: none !important; }
+  .oc-ask { margin-top: 4px; font-size: .8rem; font-weight: 600; line-height: 1.35; color: var(--dk-fg-067647, #067647); } .oc-ask.below { color: var(--dk-fg-b54708, #B54708); } .oc-ask.above { color: var(--dk-fg-b42318, #B42318); } .oc-ask.muted { color: var(--ink-soft); font-weight: 400; } .oc-ask small { font-weight: 400; }
+  .av-dlast { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: .74rem; font-weight: 600; white-space: nowrap; }
+  .av-dlast.fresh { background: var(--dk-bg-ecfdf3, #ECFDF3); color: var(--dk-fg-067647, #067647); } .av-dlast.wait { background: var(--dk-bg-fffaeb, #FFFAEB); color: var(--dk-fg-93370d, #93370D); } .av-dlast.old { background: var(--dk-bg-fef3f2, #FEF3F2); color: var(--dk-fg-b42318, #B42318); }
   .ro-note { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; font-size: .86rem; background: var(--dk-bg-eef4ff, #EEF4FF); border: 1px solid var(--dk-bd-c7d7fe, #C7D7FE); color: var(--dk-fg-1d3a8a, #1D3A8A); }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: var(--dk-fg-5f6673, #5f6673); font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -10044,13 +10047,16 @@
   function leadCountKeys(keys){
     if (avLeadIx.src !== crm.items) { var m = {}; crm.items.forEach(function(i){ if (!isAppl(i) || i.archived) return; var who = String(i.email || '').trim().toLowerCase() || applTail(i.phone) || i.ref, t = new Date(i.at).getTime() || 0; applPropKeys(i).forEach(function(k){ var o = (m[k] = m[k] || {}); o[who] = Math.max(o[who] || 0, t); }); }); avLeadIx = { src: crm.items, map: m }; }
     var seen = {}; keys.forEach(function(k){ var o = avLeadIx.map[k] || {}; Object.keys(o).forEach(function(w){ seen[w] = Math.max(seen[w] || 0, o[w]); }); });
-    var wk = Date.now() - 7 * 86400000, all = Object.keys(seen); return { n: all.length, week: all.filter(function(w){ return seen[w] > wk; }).length };
+    var wk = Date.now() - 7 * 86400000, all = Object.keys(seen); return { n: all.length, week: all.filter(function(w){ return seen[w] > wk; }).length, last: all.reduce(function(a, w){ return Math.max(a, seen[w] || 0); }, 0) };
   }
+  // When the last lead came in, in words (and how stale: over a week amber, over two weeks red) — to judge if a Dream is still working.
+  function leadAgo(t){ if (!t) return { txt: 'no leads yet', cls: 'old' }; var d = Math.floor((Date.now() - t) / 86400000);
+    return { txt: 'last lead ' + (d <= 0 ? 'today' : d === 1 ? 'yesterday' : d < 14 ? d + ' days ago' : Math.floor(d / 7) + ' weeks ago') + ' (' + new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ')', cls: d > 14 ? 'old' : d > 7 ? 'wait' : 'fresh' }; }
   function avLeadCount(x){ return leadCountKeys(avLeadKeys(x)).n; }
   // A Dream advert (one of our Rightmove adverts kept online for leads): its Rightmove number, Gnomen number and address.
   var rmByAll = {};
   function dreamLeadKeys(r, id){ return ['r:' + (r ? r.id : id)].concat(r && r.gnomen_id ? ['r:' + r.gnomen_id] : []).concat(r && r.address ? ['a:' + propKey(r.address)] : []); }
-  function dreamLeadsBtn(r, id){ if (!crm.loaded) return ''; var c = leadCountKeys(dreamLeadKeys(r, id)); return '<button type="button" class="btn small ghost av-dleads" data-dreamleads="' + esc(r ? r.id : id) + '" title="Applicants who enquired through this Dream advert">👥 ' + c.n + ' lead' + (c.n === 1 ? '' : 's') + (c.week ? ' · ' + c.week + ' this week' : '') + '</button>'; }
+  function dreamLeadsBtn(r, id){ if (!crm.loaded) return ''; var c = leadCountKeys(dreamLeadKeys(r, id)); return '<button type="button" class="btn small ghost av-dleads" data-dreamleads="' + esc(r ? r.id : id) + '" title="Applicants who enquired through this Dream advert">👥 ' + c.n + ' lead' + (c.n === 1 ? '' : 's') + (c.week ? ' · ' + c.week + ' this week' : '') + '</button><span class="av-dlast ' + leadAgo(c.last).cls + '">🕒 ' + esc(leadAgo(c.last).txt) + '</span>'; }
   document.addEventListener('click', function(e){
     var b = e.target.closest && e.target.closest('[data-dreamleads]'); if (!b) return;
     var id = b.dataset.dreamleads, r = rmByAll[id] || null;
@@ -14333,6 +14339,12 @@
       });
     });
   }
+  // The asking rent (advertised on our available list) next to the offer, and how far the offer is from it.
+  function offAskHtml(o){
+    var a = Number(o.asking_pcm) || 0; if (!a) return '<div class="oc-ask muted">Asking rent: not on the available list</div>';
+    var pcm = Number(((o.data || {}).money || {}).pcm) || 0, diff = Math.round((pcm - a) * 100) / 100;
+    return '<div class="oc-ask ' + (diff < -0.5 ? 'below' : diff > 0.5 ? 'above' : 'at') + '">Asking ' + esc(gbp(a)) + ' /month <small>(' + esc(gbp(a * 12 / 52)) + ' /wk)</small><br>' + (Math.abs(diff) <= 0.5 ? '✓ At the asking rent' : diff < 0 ? '↓ ' + esc(gbp(-diff)) + ' a month below (' + Math.round(-diff / a * 100) + '%)' : '⚠ ' + esc(gbp(diff)) + ' above asking — can’t be accepted above the advertised rent (Renters’ Rights Act)') + '</div>';
+  }
   function offAskAmount(o){
     var d = o.data || {}, due = Number((d.money || {}).holding) || 0;
     var v = window.prompt('How much arrived in the bank? (holding deposit due: ' + gbp(due) + ')', String(d.paid_amount != null ? d.paid_amount : due));
@@ -14611,13 +14623,13 @@
           : 'You have not paid a holding deposit, so there is nothing further you need to do.\n\n') + 'Kind regards,\nResidential Realtors';
       return 'mailto:' + encodeURIComponent(o.lead_email || '') + '?subject=' + encodeURIComponent((o.paid_at ? 'Holding deposit refund — ' : 'Your offer — ') + shortAddr(o.property_address) + ' (' + o.ref + ')') + '&body=' + encodeURIComponent(body);
     };
-    var mini = '<div class="oc-mini" data-oc-expand title="Show everything"><b>' + esc(shortAddr(o.property_address || '')) + '</b><span>' + (offCreditText(o) || 'Not credited') + '</span><span>' + esc(gbp(m.pcm || 0)) + ' pcm</span><span>' + (d.move_in ? 'Move in ' + esc(longDay(d.move_in)) : 'Move in TBC') + '</span><span class="oc-pill ' + st[0] + '">' + st[1] + '</span><span class="oc-mini-go">▾</span></div>';
+    var mini = '<div class="oc-mini" data-oc-expand title="Show everything"><b>' + esc(shortAddr(o.property_address || '')) + '</b><span>' + (offCreditText(o) || 'Not credited') + '</span><span>' + esc(gbp(m.pcm || 0)) + ' pcm' + (o.asking_pcm ? ' <small>(asking ' + esc(gbp(o.asking_pcm)).replace('.00', '') + ')</small>' : '') + '</span><span>' + (d.move_in ? 'Move in ' + esc(longDay(d.move_in)) : 'Move in TBC') + '</span><span class="oc-pill ' + st[0] + '">' + st[1] + '</span><span class="oc-mini-go">▾</span></div>';
     return '<article class="oc oc-' + st[0] + (offMin[o.id] ? ' oc-min' : '') + '" data-off="' + o.id + '">' + mini + '<button type="button" class="oc-minbtn" data-oc-min title="Minimise">–</button>' +
       '<header class="oc-head"><div class="oc-av">' + esc(initials || '?') + '</div>' +
         '<div class="oc-who"><div class="oc-addr">' + esc(o.property_address || '') + ' <button type="button" class="linkish oc-addr-ed" data-off-addr title="Correct the address">✎ Edit</button></div>' +
           '<div class="oc-meta">' + esc(o.lead_name || '') + ' · ' + esc(o.ref) + ' · ' + esc(fmtShort(o.created_at)) + '</div>' +
           '<div class="oc-contact">' + (o.lead_phone ? '<a href="tel:' + esc(o.lead_phone) + '">📞 ' + esc(o.lead_phone) + '</a><a class="wa-btn" target="_blank" rel="noopener" href="' + esc(offWa(o.lead_phone, o.lead_name, o)) + '">' + WA_ICON + 'WhatsApp</a>' : '') + (o.lead_email ? '<a href="mailto:' + esc(o.lead_email) + '">✉ ' + esc(o.lead_email) + '</a>' : '') + '</div></div>' +
-        '<div class="oc-price"><div class="oc-pw">' + esc(gbp(offPw(o))) + '<small> /week</small></div><div class="oc-pcm">' + esc(gbp(m.pcm || 0)) + ' /month' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' /wk' : '') + '</div></div></header>' +
+        '<div class="oc-price"><div class="oc-pw">' + esc(gbp(offPw(o))) + '<small> /week</small></div><div class="oc-pcm">' + esc(gbp(m.pcm || 0)) + ' /month' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' /wk' : '') + '</div>' + offAskHtml(o) + '</div></header>' +
       '<div class="oc-status"><span class="oc-pill ' + st[0] + '">' + st[1] + '</span>' +
         (o.paid_at ? offPaidPill(o) : (o.status === 'rejected' || o.status === 'withdrawn' ? '' : d.paid_claim ? '<span class="oc-pill wait">💬 Says paid ' + esc(longDay(d.paid_claim.date)) + (d.paid_claim.from ? ' from ' + esc(d.paid_claim.from) : '') + ' — check the bank</span>' : '<span class="oc-pill warn">Deposit ' + esc(gbp(m.holding || 0)) + ' not received</span>')) +
         (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + rtrSummary(o) + offLlPill(o) + '</div>' + rtrQuick(o) +
@@ -16055,7 +16067,7 @@
           if (!r && x.rm_id && x.rm_id !== 'none' && x.rm_url) return '<div class="av-rmwrap"><a class="av-rmlink" target="_blank" rel="noopener" href="' + esc(x.rm_url) + '"><span><b>On Rightmove ↗</b>Linked by hand · listing ' + esc(x.rm_id) + '</span></a>' + '<button type="button" class="av-rmx" data-ava="rmx" title="Not this property — unlink the advert so it goes back in Dreams" aria-label="Unlink from Rightmove">✕</button></div>';
           var dreams = (x.dream_rm || []).map(function(id){ var d = rmBy[id]; return '<span class="av-dlink"><span class="av-dcol"><a target="_blank" rel="noopener" href="' + esc(d ? d.url : 'https://www.rightmove.co.uk/properties/' + id) + '">' + esc(d ? d.address : 'Listing ' + id) + (d && d.pcm ? ' · ' + gbp(d.pcm) : '') + ' ↗</a>' + (d ? '<span class="av-dgid">' + rmGid(d) + '</span>' : '') + '</span>' + (function(){ var i = dreamInfo(id); return i.first ? '<small class="av-dd' + (i.due ? ' due' : '') + '" title="' + (i.due ? 'Up 7+ days — review it in the Dreams list above' : 'Review by ' + esc(avDay(i.review))) + '">' + i.days + 'd' + (i.due ? ' ⏰' : '') + '</small>' : ''; })() + '' + (crm.loaded ? (function(){ var c = leadCountKeys(dreamLeadKeys(d, id)); return ' <button type="button" class="linkish av-dl-n" data-dreamleads="' + esc(id) + '" title="Applicants who enquired through this Dream advert">👥 ' + c.n + '</button>'; })() : '') + '<button type="button" class="linkish" data-dreamrm="' + esc(id) + '" title="Unlink">×</button></span>'; }).join('');
           var dN = (x.dream_rm || []).length, dDue = (x.dream_rm || []).some(function(id){ return dreamInfo(id).due; });
-          var dreamHtml = dreams ? '<details class="av-dream av-dream-d"><summary>💭 ' + dN + ' Dream advert' + (dN === 1 ? '' : 's') + ' on Rightmove' + (crm.loaded ? (function(){ var ks = [].concat.apply([], (x.dream_rm || []).map(function(id){ return dreamLeadKeys(rmBy[id], id); })), c = leadCountKeys(ks); return ' · 👥 ' + c.n + ' lead' + (c.n === 1 ? '' : 's') + (c.week ? ' (' + c.week + ' this week)' : ''); })() : '') + (dDue ? ' <span class="av-dd due">⏰ review</span>' : '') + '</summary><div class="av-dreams">' + dreams + '</div></details>' : '';
+          var dreamHtml = dreams ? '<details class="av-dream av-dream-d"><summary>💭 ' + dN + ' Dream advert' + (dN === 1 ? '' : 's') + ' on Rightmove' + (crm.loaded ? (function(){ var ks = [].concat.apply([], (x.dream_rm || []).map(function(id){ return dreamLeadKeys(rmBy[id], id); })), c = leadCountKeys(ks); return ' · 👥 ' + c.n + ' lead' + (c.n === 1 ? '' : 's') + (c.week ? ' (' + c.week + ' this week)' : '') + ' · 🕒 ' + leadAgo(c.last).txt; })() : '') + (dDue ? ' <span class="av-dd due">⏰ review</span>' : '') + '</summary><div class="av-dreams">' + dreams + '</div></details>' : '';
           if (r) return '<div class="av-rmwrap"><a class="av-rmlink" target="_blank" rel="noopener" href="' + esc(r.url) + '">' + (r.image ? '<img src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<span><b>On Rightmove ↗</b>' + esc(r.address) + (r.pcm ? ' · ' + esc(gbp(r.pcm)) + ' pcm' : '') + (r.status ? ' · ' + esc(rmStatusText(r.status)) : '') + '</span></a>' + '<button type="button" class="av-rmx" data-ava="rmx" title="Not this property — unlink the advert so it goes back in Dreams" aria-label="Unlink from Rightmove">✕</button></div>' + dreamHtml;
           if (dreamHtml) return dreamHtml;
           if (x.rm_id === 'none') return '<div class="av-dream">💭 Not on Rightmove — a Dream</div>';
