@@ -2223,7 +2223,7 @@ module.exports = function mountJobs(app, opts) {
     // nothing there can be changed from a staff login (every POST / PUT / DELETE to these paths is refused).
     if (method === 'GET' && (/^\/(jobs|tenancies|tenancy-docs|tenancy-payments|invoices|certificates|landlords|quotes|photos|email-files|notes|licence-pool|licence-registers|council-tax)(\/.*)?$/.test(path) ||
       ['/property-info', '/rm-stock', '/tenant-notices', '/tenant-records', '/tenants', '/tenancy-settings', '/contractors', '/rent-board', '/statements', '/rent-recoveries', '/renewal-fees', '/cert-services', '/cert-requests', '/epc-lookup', '/licence-doc', '/licensing-schemes'].indexOf(path) !== -1)) return true;
-    if (method === 'GET') return path === '/tenant-suggest' || path === '/landlord-suggest' || path === '/our-props' || path === '/viewing-contacts' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'GET') return path === '/tenant-suggest' || path === '/landlord-suggest' || path === '/our-props' || path === '/viewing-contacts' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|landlord\.pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
@@ -8489,12 +8489,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
         for (const row of (await p.query('SELECT * FROM valuations WHERE id = ANY($1::int[])', [vids])).rows) { const out = await valuationPdf(p, row); atts.push({ filename: String(out.name || 'Appraisal.pdf').replace(/[^a-zA-Z0-9.\-_ ,()]+/g, '-'), content: Buffer.from(out.bytes) }); }
       } catch (e) { console.error('Valuation attachment failed:', e.message); return res.status(500).json({ ok: false, error: 'attachment' }); }
     }
+    // The landlord's copy of an offer (no contact details), made fresh and attached; the offer notes that it was emailed.
+    const olid = parseInt(b.offer_landlord_id, 10) || 0;
+    if (olid) {
+      try { const p = await db(), o = (await p.query('SELECT * FROM offers WHERE id = $1', [olid])).rows[0];
+        if (o) { const out = await offerLandlordPdf(p, o, offerReviewLink(await offerLandlordToken(p, req, o))); atts = (atts || []).concat([{ filename: out.name.replace(/[^a-zA-Z0-9.\-_ ,()]+/g, '-'), content: Buffer.from(out.bytes) }]); }
+      } catch (e) { console.error('Offer attachment failed:', e.message); return res.status(500).json({ ok: false, error: 'attachment' }); }
+    }
     const r = await sendEmail({ to: to, cc: cc, bcc: b.copy !== false && isEmail(me) && to.concat(cc).indexOf(me) === -1 ? [me] : undefined, replyTo: replyTo, fromName: name, subject: subject, text: text, html: brandEmail(text, subject), attachments: atts }).catch(function (err) { return { ok: false, error: err.message }; });
     // Kept so each person can look back at what they sent, and when.
     try { const pdb = await db(), kept = r.ok && atts && atts.length ? await keepEmailFiles(pdb, atts) : [];
       await pdb.query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error, files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
       [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', to, cc, replyTo, subject, text, !!r.ok, r.ok ? null : String(r.error || '').slice(0, 300), JSON.stringify(kept)]); } catch (e) { console.error('Sent email log failed:', e.message); }
     if (!r.ok) { console.error('Send email failed:', r.error); return res.status(502).json({ ok: false, error: 'send-failed', detail: String(r.error || '').slice(0, 200) }); }
+    if (olid) try { await (await db()).query("UPDATE offers SET data = data || jsonb_build_object('landlord_emailed_at', to_jsonb(now()), 'landlord_emailed_to', $2::text), log = log || $3::jsonb WHERE id = $1", [olid, to.join(', '), JSON.stringify([offerLog(req, 'Offer emailed to the landlord (' + to.join(', ') + ') with the offer summary - no applicant contact details')])]); } catch (e) { console.error('Offer email note failed:', e.message); }
     res.json({ ok: true, replyTo: replyTo });
   });
   // Keep a copy of an email we sent for someone (Sent emails, and the person's history).
@@ -10372,27 +10380,108 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const id = jobId(req);
     const o = (await p.query('SELECT id, property_address, property_key, data FROM offers WHERE id = $1', [id])).rows[0];
     if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
-    let tok = (o.data || {}).landlord_token;
-    if (!tok) { tok = crypto.randomBytes(16).toString('base64url'); await p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_token', $2::text), log = log || $3::jsonb WHERE id = $1", [id, tok, JSON.stringify([offerLog(req, 'Landlord review link created')])]); }
+    const tok = await offerLandlordToken(p, req, o);
     // The landlord on our records for this property, and any terms of business link waiting for them.
     const ll = (await p.query('SELECT l.name, l.email, l.phone FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [o.property_key || propKey(o.property_address)])).rows[0] || null;
     const tr = (await p.query("SELECT token, status, property_address FROM landlord_terms WHERE status IN ('sent', 'signed') ORDER BY id DESC LIMIT 200")).rows.filter(function (t) { return sameProperty(t.property_address, o.property_address); })[0];
-    res.json({ ok: true, link: (OFFER_ORIGIN || PUBLIC_URL) + '/offer/review/' + tok, landlord: ll, terms: tr ? { link: ltLink(tr), signed: tr.status === 'signed' } : null, report: PUBLIC_URL || '' });
+    res.json({ ok: true, link: offerReviewLink(tok), pdf: '/api/admin/offers/' + id + '/landlord.pdf', emailed_at: (o.data || {}).landlord_emailed_at || null, landlord: ll, terms: tr ? { link: ltLink(tr), signed: tr.status === 'signed' } : null, report: PUBLIC_URL || '' });
   }));
   async function offerByLandlordToken(p, t) { return /^[\w-]{16,40}$/.test(String(t || '')) ? (await p.query("SELECT * FROM offers WHERE data->>'landlord_token' = $1", [String(t)])).rows[0] : null; }
+  // What a landlord may see of an offer: first name + initial, work and income, guarantor in outline, right to rent
+  // status, conditions — never phone numbers, emails, dates of birth, addresses or IDs (any typed into free text are
+  // blanked out too). Shared by the review page and the landlord's PDF copy.
+  function noContacts(t) { return String(t || '').replace(/[^\s@<>,;]+@[^\s@<>,;]+\.[a-z]{2,}/gi, '[email removed]').replace(/(\+?\d[\d\s().-]{8,}\d)/g, function (m) { return m.replace(/\D/g, '').length >= 10 ? '[number removed]' : m; }); }
+  function offerForLandlord(o) {
+    const d = o.data || {}, m = d.money || {}, rtr = d.rtr || {};
+    const first = function (n) { const w = String(n || '').trim().split(/\s+/); return w.length > 1 ? w[0] + ' ' + w[w.length - 1].charAt(0) + '.' : w[0] || ''; };
+    return { ok: true, ref: 'OF' + String(o.id).padStart(4, '0'), property: o.property_address, created_at: o.created_at, status: o.status,
+      offer_pw: Number(o.offer_pw), pcm: m.pcm || 0, move_in: d.move_in || null, stay: d.stay || '', holding_paid: !!o.paid_at, asking_pcm: Number(d.asking_pcm) || null,
+      tenants: (d.tenants || []).map(function (t, i) { const r = rtr[i + 1]; return { name: first(t.name), income: t.income_type || '', work: [t.position, t.company].filter(Boolean).join(' at '), employment: t.employment_type || '', salary: t.salary ? Number(String(t.salary).replace(/[£,\s]/g, '')) || null : null,
+        study: [t.course, t.university].filter(Boolean).join(', '), status: t.residency_status || '', guarantor: t.g_name ? { relation: t.g_relation || '', homeowner: t.g_homeowner || '', income: t.g_salary ? Number(String(t.g_salary).replace(/[£,\s]/g, '')) || null : null } : null,
+        right_to_rent: r ? (r.result === 'none' ? 'No right to rent' : 'Checked') : 'To be checked' }; }),
+      conditions: offerConds(d).map(function (c) { return { text: noContacts(c.text), status: c.status }; }), about: noContacts(d.about || ''), response: d.landlord_response || null };
+  }
+  // The landlord's copy of an offer as a PDF (no contact details) — attached to the "offer received" email.
+  async function offerLandlordPdf(p, o, link) {
+    const v = offerForLandlord(o);
+    const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+    const pdf = await PDFDocument.create(), F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const W = 595.28, H = 841.89, M = 50, CW = W - M * 2;
+    const hex = function (h) { return rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255); };
+    const C = { navy: hex('0B1F3A'), red: hex('C8102E'), ink: hex('101828'), soft: hex('667085'), line: hex('E4E7EC'), panel: hex('F7F8FA'), white: rgb(1, 1, 1), green: hex('067647') };
+    const safe = function (t) { return String(t == null ? '' : t).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/·/g, '\xB7').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
+    const money = function (x) { return '\xA3' + (Number(x) || 0).toLocaleString('en-GB', { maximumFractionDigits: 0 }); };
+    const dayOf = function (x) { return x ? new Date(String(x).length === 10 ? x + 'T12:00:00Z' : x).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }) : ''; };
+    let page, y;
+    const newPage = function () { page = pdf.addPage([W, H]); y = H - M; };
+    const need = function (h) { if (y - h < M + 30) { newPage(); } };
+    const lines = function (t, font, size, width) { return pdfWrap(safe(t), font, size, width); };
+    const para = function (t, size, font, color, x, width) { x = x || M; width = width || CW; lines(t, font || F, size, width).forEach(function (ln) { need(size + 4); page.drawText(ln, { x: x, y: y - size, size: size, font: font || F, color: color || C.ink }); y -= size + 4; }); };
+    const row = function (label, value) { if (!value) return; const lw = 150, vl = lines(value, F, 10, CW - lw - 10); need(vl.length * 14 + 4);
+      page.drawText(safe(label), { x: M, y: y - 10, size: 9, font: B, color: C.soft }); vl.forEach(function (ln, i) { page.drawText(ln, { x: M + lw, y: y - 10 - i * 14, size: 10, font: F, color: C.ink }); }); y -= vl.length * 14 + 4; };
+    const head = function (t) { need(34); y -= 10; page.drawText(safe(t), { x: M, y: y - 12, size: 12, font: B, color: C.navy }); y -= 18; page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.8, color: C.line }); y -= 8; };
+    newPage();
+    // Banner
+    page.drawRectangle({ x: 0, y: H - 96, width: W, height: 96, color: C.navy });
+    page.drawText('RESIDENTIAL REALTORS', { x: M, y: H - 40, size: 10, font: B, color: C.white });
+    page.drawText(safe('Offer received - for the landlord'), { x: M, y: H - 66, size: 18, font: B, color: C.white });
+    page.drawText(safe('Ref ' + v.ref + ' \xB7 ' + dayOf(v.created_at)), { x: M, y: H - 84, size: 9, font: F, color: C.white });
+    y = H - 120;
+    para(v.property, 13, B, C.ink);
+    y -= 4;
+    head('The offer');
+    row('Rent offered', v.pcm ? money(v.pcm) + ' a month' + (v.offer_pw ? ' (' + money(v.offer_pw) + ' a week)' : '') : '');
+    if (v.asking_pcm) row('Asking rent', money(v.asking_pcm) + ' a month');
+    row('Move-in date', dayOf(v.move_in) || 'To be agreed');
+    row('Length of tenancy', v.stay);
+    row('Holding deposit', v.holding_paid ? 'Received by us' : 'Not received yet');
+    row('Number of applicants', String(v.tenants.length || ''));
+    v.tenants.forEach(function (t, i) {
+      head('Applicant ' + (i + 1) + (t.name ? ' - ' + t.name : ''));
+      row('Income', t.income); row('Work', t.work); row('Employment', t.employment); row('Salary', t.salary ? money(t.salary) + ' a year' : ''); row('Studying', t.study);
+      row('Residency', t.status); row('Right to rent', t.right_to_rent);
+      if (t.guarantor) row('Guarantor', [t.guarantor.relation, t.guarantor.homeowner ? 'Homeowner: ' + t.guarantor.homeowner : '', t.guarantor.income ? 'Income ' + money(t.guarantor.income) + ' a year' : ''].filter(Boolean).join(' \xB7 ') || 'Yes');
+    });
+    if (v.conditions.length) { head('Conditions asked for'); v.conditions.forEach(function (c, i) { para((i + 1) + '. ' + c.text + (c.status === 'yes' ? ' (agreed)' : c.status === 'no' ? ' (not agreed)' : ''), 10); }); }
+    if (v.about) { head('About the applicants'); para(v.about, 10); }
+    head('Next step');
+    para('Please let us know whether you would like to accept this offer' + (link ? ' - you can see it and answer online at:' : '.'), 10);
+    if (link) para(link, 10, B, hex('1D3FAE'));
+    y -= 6;
+    para('For their privacy, the applicants\' phone numbers, email addresses, dates of birth and ID documents are kept by Residential Realtors and are not included in this summary. We check right to rent and references before the tenancy starts.', 8.5, F, C.soft);
+    pdf.getPages().forEach(function (pg, i, all) { pg.drawText(safe('Residential Realtors \xB7 28-30 Harper Road, London SE1 6AD \xB7 0207 096 8131 \xB7 info@residentialrealtors.co.uk' + (all.length > 1 ? '   Page ' + (i + 1) + ' of ' + all.length : '')), { x: M, y: 26, size: 7.5, font: F, color: C.soft }); });
+    return { bytes: await pdf.save(), name: 'Offer ' + v.ref + ' - for the landlord.pdf' };
+  }
+  function offerReviewLink(tok) { return (OFFER_ORIGIN || PUBLIC_URL) + '/offer/review/' + tok; }
+  async function offerLandlordToken(p, req, o) {
+    let tok = (o.data || {}).landlord_token;
+    if (!tok) { tok = crypto.randomBytes(16).toString('base64url'); await p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_token', $2::text), log = log || $3::jsonb WHERE id = $1", [o.id, tok, JSON.stringify([offerLog(req, 'Landlord review link created')])]); o.data = Object.assign({}, o.data, { landlord_token: tok }); }
+    return tok;
+  }
+  app.get('/api/admin/offers/:id/landlord.pdf', withDb(async function (p, req, res) {
+    const o = (await p.query('SELECT * FROM offers WHERE id = $1', [jobId(req)])).rows[0];
+    if (!o) return res.status(404).send('Not found');
+    const out = await offerLandlordPdf(p, o, offerReviewLink(await offerLandlordToken(p, req, o)));
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + out.name.replace(/"/g, '') + '"');
+    res.end(Buffer.from(out.bytes));
+  }));
+  app.get('/api/offers/review/:token/pdf', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests');
+    const o = await offerByLandlordToken(p, req.params.token);
+    if (!o) return res.status(404).send('Not found');
+    const out = await offerLandlordPdf(p, o, offerReviewLink(req.params.token));
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+    res.setHeader('Content-Disposition', 'inline; filename="' + out.name.replace(/"/g, '') + '"');
+    res.end(Buffer.from(out.bytes));
+  }));
   app.get('/api/offers/review/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const o = await offerByLandlordToken(p, req.params.token);
     if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
-    const d = o.data || {}, m = d.money || {}, rtr = d.rtr || {};
+    const d = o.data || {};
     if (!d.landlord_viewed_at) p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'landlord_viewed_at')", [o.id, JSON.stringify([offerLog(req, 'Landlord opened the offer review link', 'landlord')])]).catch(function () {});
-    const first = function (n) { const w = String(n || '').trim().split(/\s+/); return w.length > 1 ? w[0] + ' ' + w[w.length - 1].charAt(0) + '.' : w[0] || ''; };
-    res.json({ ok: true, ref: 'OF' + String(o.id).padStart(4, '0'), property: o.property_address, created_at: o.created_at, status: o.status,
-      offer_pw: Number(o.offer_pw), pcm: m.pcm || 0, move_in: d.move_in || null, stay: d.stay || '', holding_paid: !!o.paid_at,
-      tenants: (d.tenants || []).map(function (t, i) { const r = rtr[i + 1]; return { name: first(t.name), income: t.income_type || '', work: [t.position, t.company].filter(Boolean).join(' at '), employment: t.employment_type || '', salary: t.salary ? Number(String(t.salary).replace(/[£,\s]/g, '')) || null : null,
-        study: [t.course, t.university].filter(Boolean).join(', '), status: t.residency_status || '', guarantor: t.g_name ? { relation: t.g_relation || '', homeowner: t.g_homeowner || '', income: t.g_salary ? Number(String(t.g_salary).replace(/[£,\s]/g, '')) || null : null } : null,
-        right_to_rent: r ? (r.result === 'none' ? 'No right to rent' : 'Checked') : 'To be checked' }; }),
-      conditions: offerConds(d), about: d.about || '', response: d.landlord_response || null });
+    res.json(offerForLandlord(o));
   }));
   app.post('/api/offers/review/:token/respond', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
