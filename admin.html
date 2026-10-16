@@ -14581,7 +14581,10 @@
   function offLlPill(o){
     var r = (o.data || {}).landlord_response, v = (o.data || {}).landlord_viewed_at;
     if (r) return '<span class="oc-pill ' + (r.answer === 'accept' ? 'ok' : r.answer === 'decline' ? 'no' : 'wait') + '" title="' + esc(r.note || '') + '">🏠 Landlord ' + (r.answer === 'accept' ? 'accepts' : r.answer === 'decline' ? 'declines' : 'wants to discuss') + (r.note ? ' — “' + esc(r.note.slice(0, 50)) + (r.note.length > 50 ? '…' : '') + '”' : '') + '</span>';
-    return (o.data || {}).landlord_token ? '<span class="oc-pill muted">🏠 ' + (v ? 'Landlord has seen the offer' : 'Sent to landlord') + '</span>' : '';
+    var d = o.data || {}, n = Number(d.landlord_views) || 0, last = d.landlord_last_view_at;
+    if (v) return '<span class="oc-pill ok" title="First opened ' + esc(fmtShort(v)) + (last ? ' · last opened ' + esc(fmtShort(last)) : '') + '">👁 Landlord opened it ' + esc(fmtShort(last || v)) + (n > 1 ? ' · ' + n + ' times' : '') + ' — no answer yet</span>';
+    if (d.landlord_emailed_at) return '<span class="oc-pill wait" title="Emailed to ' + esc(d.landlord_emailed_to || 'the landlord') + '">✉ Emailed ' + esc(fmtShort(d.landlord_emailed_at)) + ' — not opened yet</span>';
+    return d.landlord_token ? '<span class="oc-pill muted">🏠 Link made — not sent from Fixflow yet</span>' : '';
   }
   // The email to the landlord about a new offer, in the office's words.
   function offLandlordMail(o, info){
@@ -14606,7 +14609,7 @@
     var ll = info.landlord || {}, el = document.createElement('div'); el.className = 'oc-ll';
     el.innerHTML = '<b>🏠 Send the offer to the landlord</b><span class="muted-note" style="margin:0">' + (ll.name ? 'Landlord on file: ' + esc(ll.name) + (ll.email ? ' · ' + esc(ll.email) : '') : 'No landlord on file for this property — add their email in the draft.') + ' Their page shows the offer without the applicants’ phone numbers, emails, dates of birth or IDs.</span>' +
       (info.emailed_at || (o.data || {}).landlord_emailed_at ? '<div class="oc-ll-sent">✓ Emailed to the landlord ' + esc(fmtShort(info.emailed_at || o.data.landlord_emailed_at)) + ' — send again below if needed</div>' : '') +
-      '<div class="oc-ll-b"><button type="button" class="btn small primary" data-ll-mail>✉ Email the landlord (PDF attached)</button><a class="btn small" target="_blank" rel="noopener" href="' + esc(info.pdf || ('/api/admin/offers/' + o.id + '/landlord.pdf')) + '">📄 Landlord copy (PDF)</a><button type="button" class="btn small wa-btn" data-ll-wa>' + WA_ICON + 'WhatsApp</button><button type="button" class="btn small" data-ll-copy>🔗 Copy link</button><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(info.link) + '">Preview ↗</a></div>';
+      '<div class="oc-ll-b"><button type="button" class="btn small primary" data-ll-mail>✉ Email the landlord (PDF attached)</button><a class="btn small" target="_blank" rel="noopener" href="' + esc(info.pdf || ('/api/admin/offers/' + o.id + '/landlord.pdf')) + '">📄 Landlord copy (PDF)</a><button type="button" class="btn small wa-btn" data-ll-wa>' + WA_ICON + 'WhatsApp</button><button type="button" class="btn small" data-ll-copy>🔗 Copy link</button><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(info.link) + '?staff=1" title="Opens the landlord’s page — doesn’t count as the landlord seeing it">Preview ↗</a></div>';
     var lr = (o.data || {}).landlord_response; if (lr && lr.answer !== 'discuss') el.insertAdjacentHTML('beforeend', '<div style="margin-top:6px;font-size:.84rem">The landlord ' + (lr.answer === 'accept' ? 'accepted' : 'declined') + ' — their decision is locked. <button type="button" class="linkish" data-ll-reopen>Let them choose again</button></div>');
     card.querySelector('.oc-actions').before(el);
     el.addEventListener('click', function(e){
@@ -14684,7 +14687,7 @@
     return '<article class="oc oc-wait inf-card" data-off="' + o.id + '">' +
       '<header class="oc-head"><div class="oc-av">💬</div><div class="oc-who"><div class="oc-addr">' + esc(o.property_address || '') + '</div>' +
         '<div class="oc-meta">Informal offer · ' + esc(o.ref) + ' · by ' + esc(d.made_by || 'the office') + ' · ' + esc(fmtShort(o.created_at)) + '</div>' +
-        '<div class="oc-pills">' + offLlPill(o) + (d.landlord_emailed_at ? '<span class="oc-pill ok">✉ Emailed to the landlord ' + esc(fmtShort(d.landlord_emailed_at)) + '</span>' : '<span class="oc-pill muted">Not sent to the landlord yet</span>') + '</div></div>' +
+        '<div class="oc-pills">' + (offLlPill(o) || '<span class="oc-pill muted">Not sent to the landlord yet</span>') + '</div></div>' +
         '<div class="oc-price"><div class="oc-pw">' + esc(gbp(m.pcm || 0)) + '<small> /month</small></div><div class="oc-pcm">' + esc(gbp(offPw(o))) + ' /week' + (d.move_in ? ' · from ' + esc(ukDay(d.move_in)) : '') + (d.stay ? ' · ' + esc(d.stay) : '') + '</div>' + offAskHtml(o) + '</div></header>' +
       (ts.length ? '<div class="inf-people">' + ts.map(function(t){ return '<div>👤 ' + line(t) + '</div>'; }).join('') + '</div>' : '') +
       ((d.conditions || []).length ? '<div class="inf-people"><b>Asking for:</b> ' + d.conditions.map(esc).join(' · ') + '</div>' : '') +

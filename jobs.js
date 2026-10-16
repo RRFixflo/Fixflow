@@ -10467,10 +10467,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.setHeader('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + out.name.replace(/"/g, '') + '"');
     res.end(Buffer.from(out.bytes));
   }));
+  // The landlord opening their offer link (or its PDF): first time, last time and how many times — never counted
+  // for our own staff (signed in, or the staff app's Preview button, ?staff=1). The first view alerts the office.
+  function landlordViewed(p, req, o, what) {
+    if (isStaff(req) || req.query.staff === '1') return;
+    const d = o.data || {}, first = !d.landlord_viewed_at;
+    p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_viewed_at', coalesce(data->'landlord_viewed_at', to_jsonb(now())), 'landlord_last_view_at', to_jsonb(now()), 'landlord_views', coalesce((data->>'landlord_views')::int, 0) + 1)" + (first ? ', log = log || $2::jsonb' : '') + ' WHERE id = $1',
+      first ? [o.id, JSON.stringify([offerLog(req, 'Landlord opened ' + what + ' for the first time', 'landlord')])] : [o.id]).catch(function () {});
+    if (first) offerAlert({ title: '👁 Landlord opened the offer: ' + shortAddrText(o.property_address), message: 'OF' + String(o.id).padStart(4, '0') + ((o.data || {}).informal ? ' (informal offer)' : '') + ' · ' + gbp((d.money || {}).pcm || 0) + ' pcm — they’ve seen it but not answered yet', tags: ['eyes'] });
+  }
   app.get('/api/offers/review/:token/pdf', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).send('Too many requests');
     const o = await offerByLandlordToken(p, req.params.token);
     if (!o) return res.status(404).send('Not found');
+    landlordViewed(p, req, o, 'the offer PDF');
     const out = await offerLandlordPdf(p, o, offerReviewLink(req.params.token));
     res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store'); res.setHeader('X-Robots-Tag', 'noindex');
     res.setHeader('Content-Disposition', 'inline; filename="' + out.name.replace(/"/g, '') + '"');
@@ -10481,7 +10491,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const o = await offerByLandlordToken(p, req.params.token);
     if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
     const d = o.data || {};
-    if (!d.landlord_viewed_at) p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'landlord_viewed_at')", [o.id, JSON.stringify([offerLog(req, 'Landlord opened the offer review link', 'landlord')])]).catch(function () {});
+    landlordViewed(p, req, o, 'the offer');
     res.json(offerForLandlord(o));
   }));
   app.post('/api/offers/review/:token/respond', withDb(async function (p, req, res) {
