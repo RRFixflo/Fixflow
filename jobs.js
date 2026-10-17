@@ -10201,17 +10201,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   function offerPayRef(address, ref) { return (addrPayRef(address) || ref).slice(0, 18); }
   // "Who am I paying?" — answered before applicants have to ask (one asked why the account is in the
-  // company's name, for our membership numbers and the written holding deposit terms). Membership numbers
-  // not yet known in the code come from Railway (TPO_MEMBER_NO, PROPERTYMARK_NO) and are left out until set.
+  // company's name, for our membership numbers and the written holding deposit terms). The Property Ombudsman no. is D10105
+  // (Railway TPO_MEMBER_NO can change it); a Propertymark member no. (PROPERTYMARK_NO) is left out until set.
   function payTrust() {
     return { company: 'Estallion Investments Ltd', company_no: '08760284', address: '28-30 Harper Road, London SE1 6AD',
       ch_url: 'https://find-and-update.company-information.service.gov.uk/company/08760284', payee: INVOICE.payee || '',
-      cmp: 'C0130229', tpo: String(process.env.TPO_MEMBER_NO || '').trim(), propertymark: String(process.env.PROPERTYMARK_NO || '').trim(), phone: '0207 096 8131' };
+      cmp: 'C0130229', tpo: String(process.env.TPO_MEMBER_NO || 'D10105').trim(), propertymark: String(process.env.PROPERTYMARK_NO || '').trim(), phone: '0207 096 8131' };
   }
   function payTrustLines(pdfUrl) {
     const t = payTrust(), own = /estallion/i.test(t.payee) || !t.payee;
     return [
-      [own ? 'Why the account is in the name ' + t.company : 'Who you are paying', 'Residential Realtors is the trading name of ' + t.company + ' (registered in England, company no. ' + t.company_no + ', ' + t.address + '), so payments to us go to the company\'s bank account. You can check the company on Companies House.', t.ch_url, 'Check on Companies House'],
+      [own ? 'Why the account is in the name ' + t.company : 'Who you are paying', t.company + ' trading as Residential Realtors (registered in England, company no. ' + t.company_no + ', ' + t.address + '), so payments to us go to the company\'s bank account. You can check the company on Companies House.', t.ch_url, 'Check on Companies House'],
       ['Your money is protected', 'Propertymark Client Money Protection, membership no. ' + t.cmp + (t.propertymark ? '. Propertymark member no. ' + t.propertymark : '') + '. Redress: The Property Ombudsman' + (t.tpo ? ', membership no. ' + t.tpo : '') + '.'],
       ['Your written holding deposit agreement', 'The holding deposit terms you read and signed with your offer, including when it is and isn\'t refunded, are in your signed agreement. In short: it is one week\'s rent and goes towards your first month\'s rent; if the landlord rejects your offer or withdraws the property it is returned within 24 hours; it is only kept in the cases you ticked (for example if you withdraw, fail the right to rent check, give misleading information, or don\'t complete referencing or sign in time).', pdfUrl, 'Download your signed agreement (PDF)']
     ];
