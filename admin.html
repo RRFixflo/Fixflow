@@ -14995,7 +14995,7 @@
     var a = e.target.closest('[data-off-act]'), pd = e.target.closest('[data-off-paid]');
     if (a || pd) {
       var body = a ? { status: a.dataset.offAct } : { paid: pd.dataset.offPaid === '1' };
-      if (pd && body.paid) { offAmountBox(pd, o, function(got){ api('POST', '/api/admin/offers/' + o.id, { paid: true, paid_amount: got }).then(function(d){ if (!d.ok) { toast('Couldn’t save that'); loadOffers(); return; } toast('Holding deposit received · ' + gbp(got)); loadOffers(); }); }); return; }
+      if (pd && body.paid) { offAmountBox(pd, o, function(got){ api('POST', '/api/admin/offers/' + o.id, { paid: true, paid_amount: got }).then(function(d){ if (!d.ok) { toast('Couldn’t save that'); loadOffers(); return; } toast('Holding deposit received · ' + gbp(got) + (d.receipt_emailed ? ' — receipt emailed to the applicant' : d.receipt_emailed === false ? ' — the receipt email couldn’t be sent' : '')); loadOffers(); }); }); return; }
       if (a && a.dataset.offAct === 'rejected') { offRejectBox(a, o); return; }
       busy(a || pd, true, '…');
       api('POST', '/api/admin/offers/' + o.id, body).then(function(d){
