@@ -10197,9 +10197,31 @@ document.querySelectorAll('.lcu').forEach(function(box){
     offerAlert({ title: 'New offer: ' + gbp(pw) + ' pw — ' + shortAddrText(address), message: lead + ' · ' + tenants.length + ' tenant' + (tenants.length === 1 ? '' : 's') + (data.move_in ? ' · move in ' + certDay(data.move_in) : '') + (data.stay ? ' · stay ' + data.stay : '') + '. Open Offers in Fixflow.', tags: ['house'] }).catch(function () {});
     // How to pay the holding deposit (bank details from the settings, never in the code).
     const bank = INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
-    res.json({ ok: true, ref: ref, money: data.money, bank: bank, reference: offerPayRef(address, ref), track: '/offer/track/' + token, pvr: pvr ? { ref: pvr.ref, paid: pvr.paid } : null });
+    res.json({ ok: true, ref: ref, money: data.money, bank: bank, trust: payTrust(), reference: offerPayRef(address, ref), track: '/offer/track/' + token, pvr: pvr ? { ref: pvr.ref, paid: pvr.paid } : null });
   }));
   function offerPayRef(address, ref) { return (addrPayRef(address) || ref).slice(0, 18); }
+  // "Who am I paying?" — answered before applicants have to ask (one asked why the account is in the
+  // company's name, for our membership numbers and the written holding deposit terms). Membership numbers
+  // not yet known in the code come from Railway (TPO_MEMBER_NO, PROPERTYMARK_NO) and are left out until set.
+  function payTrust() {
+    return { company: 'Estallion Investments Ltd', company_no: '08760284', address: '28-30 Harper Road, London SE1 6AD',
+      ch_url: 'https://find-and-update.company-information.service.gov.uk/company/08760284', payee: INVOICE.payee || '',
+      cmp: 'C0130229', tpo: String(process.env.TPO_MEMBER_NO || '').trim(), propertymark: String(process.env.PROPERTYMARK_NO || '').trim(), phone: '0207 096 8131' };
+  }
+  function payTrustLines(pdfUrl) {
+    const t = payTrust(), own = /estallion/i.test(t.payee) || !t.payee;
+    return [
+      [own ? 'Why the account is in the name ' + t.company : 'Who you are paying', 'Residential Realtors is the trading name of ' + t.company + ' (registered in England, company no. ' + t.company_no + ', ' + t.address + '), so payments to us go to the company\'s bank account. You can check the company on Companies House.', t.ch_url, 'Check on Companies House'],
+      ['Your money is protected', 'Propertymark Client Money Protection, membership no. ' + t.cmp + (t.propertymark ? '. Propertymark member no. ' + t.propertymark : '') + '. Redress: The Property Ombudsman' + (t.tpo ? ', membership no. ' + t.tpo : '') + '.'],
+      ['Your written holding deposit agreement', 'The holding deposit terms you read and signed with your offer, including when it is and isn\'t refunded, are in your signed agreement. In short: it is one week\'s rent and goes towards your first month\'s rent; if the landlord rejects your offer or withdraws the property it is returned within 24 hours; it is only kept in the cases you ticked (for example if you withdraw, fail the right to rent check, give misleading information, or don\'t complete referencing or sign in time).', pdfUrl, 'Download your signed agreement (PDF)'],
+      ['Want to see it again first?', 'We are happy to arrange another viewing or a live video viewing before you pay — just reply to this email or call ' + t.phone + '.']
+    ];
+  }
+  function payTrustText(pdfUrl) { return payTrustLines(pdfUrl).map(function (l) { return l[0] + ':\n' + l[1] + (l[2] ? '\n' + l[3] + ': ' + l[2] : ''); }).join('\n\n'); }
+  function payTrustHtml(pdfUrl, esc2) {
+    return '<div style="margin:18px 0 0;border:1px solid #e7e9ee;border-radius:12px;padding:14px 16px;background:#f8fafc"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#0b1f3a;font-weight:800;margin:0 0 8px">Before you pay</div>' +
+      payTrustLines(pdfUrl).map(function (l) { return '<p style="margin:0 0 10px;font-size:14px;line-height:1.5;color:#344054"><b style="color:#101828">' + esc2(l[0]) + '</b><br>' + esc2(l[1]) + (l[2] ? '<br><a href="' + esc2(l[2]) + '" style="color:#1d4ed8;font-weight:600">' + esc2(l[3]) + ' ›</a>' : '') + '</p>'; }).join('') + '</div>';
+  }
   // ---------- Automatic holding deposit reminders (email) ----------
   // The applicant is emailed if the holding deposit hasn't been marked received
   // (and they haven't said they've paid): it's due as soon as the offer is in, so
@@ -10216,14 +10238,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   function reminderEmail(o, stage) {
     const d = o.data || {}, m = d.money || {}, ref = 'OF' + String(o.id).padStart(4, '0'), first = String(o.lead_name || '').split(/\s+/)[0] || 'there';
-    const base = OFFER_ORIGIN || PUBLIC_URL, track = base + '/offer/track/' + o.track_token, payRef = offerPayRef(o.property_address, ref);
+    const base = OFFER_ORIGIN || PUBLIC_URL, track = base + '/offer/track/' + o.track_token, pdf = base + '/api/offers/track/' + o.track_token + '/offer.pdf', payRef = offerPayRef(o.property_address, ref);
     const last = stage === 'r22';
     const bank = [['Account name', INVOICE.payee], ['Sort code', INVOICE.sortCode], ['Account number', INVOICE.accountNumber], ['IBAN', INVOICE.iban], ['SWIFT / BIC', INVOICE.swift], ['Amount', gbp(m.holding)], ['Reference', payRef]].filter(function (r) { return r[1]; });
     const subject = (last ? 'Last reminder: ' : 'Reminder: ') + 'holding deposit for ' + shortAddrText(o.property_address) + ' (' + ref + ')';
     const text = 'Hi ' + first + ',\n\n' + (last ? 'This is a last reminder: to reserve the property' : 'Thank you for your offer on ' + o.property_address + '. To reserve the property') +
       ', please pay the holding deposit of ' + gbp(m.holding) + ' now — it was due when you sent your offer. Your form alone isn\'t an offer: your offer is only made once the holding deposit is paid.\n\n' + bank.map(function (r) { return r[0] + ': ' + r[1]; }).join('\n') +
       '\n\nPlease use exactly this payment reference (no spaces) so we can match your payment.\n\nAlready paid? Tap "I\'ve paid" on your tracking page so we can check: ' + track +
-      '\n\nThe holding deposit goes towards your first month\'s rent once your offer is accepted.\n\nResidential Realtors';
+      '\n\nThe holding deposit goes towards your first month\'s rent once your offer is accepted.\n\n' + payTrustText(pdf) + '\n\nResidential Realtors';
     const esc2 = function (x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
     const html = '<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#101828">' +
       '<div style="background:#0b1f3a;color:#fff;border-radius:16px 16px 0 0;padding:22px 24px">' + (base ? '<img src="' + esc2(base) + '/logo-white.png" alt="Residential Realtors" height="40" style="display:block;height:40px;width:auto;margin:0 0 16px">' : '') + '<div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#ffb4b7;font-weight:700">' + (last ? 'Last reminder' : 'Reminder') + ' · Offer ' + ref + '</div>' +
@@ -10233,6 +10255,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '<table style="width:100%;border-collapse:collapse;margin:12px 0">' + bank.map(function (r) { return '<tr><td style="padding:8px 0;border-bottom:1px solid #eef0f3;color:#667085">' + esc2(r[0]) + '</td><td style="padding:8px 0;border-bottom:1px solid #eef0f3;text-align:right;font-weight:' + (r[0] === 'Reference' ? '800;color:#c8102e' : '600') + '">' + esc2(r[1]) + '</td></tr>'; }).join('') + '</table>' +
       '<p style="margin:0 0 16px;color:#667085;font-size:14px">Please use exactly this payment reference (no spaces) so we can match your payment.</p>' +
       '<a href="' + esc2(track) + '" style="display:block;text-align:center;background:#12b76a;color:#fff;text-decoration:none;font-weight:700;border-radius:12px;padding:14px">Already paid? Tell us here</a>' +
+      payTrustHtml(pdf, esc2) +
       '<p style="margin:16px 0 0;color:#667085;font-size:13px">The holding deposit goes towards your first month\'s rent once your offer is accepted.<br>Residential Realtors</p></div></div>';
     return { subject: subject, text: text, html: html };
   }
@@ -10365,7 +10388,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const dueHold = Number((d.money || {}).holding) || 0, got = o.paid_at ? (d.paid_amount != null ? Number(d.paid_amount) : dueHold) : 0, short = o.paid_at ? Math.max(0, Math.round((dueHold - got) * 100) / 100) : 0;
     const bank = (!o.paid_at || short > 0) && o.status !== 'rejected' && o.status !== 'withdrawn' && INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
     res.json({ ok: true, ref: ref, property: o.property_address, name: String(o.lead_name || '').split(/\s+/)[0], created_at: o.created_at, status: o.status, decided_at: o.decided_at, paid_at: o.paid_at,
-      offer_pw: Number(o.offer_pw), money: d.money || {}, move_in: d.move_in || null, stay: d.stay || '', tenants: (d.tenants || []).length, bank: bank, reference: offerPayRef(o.property_address, ref),
+      offer_pw: Number(o.offer_pw), money: d.money || {}, move_in: d.move_in || null, stay: d.stay || '', tenants: (d.tenants || []).length, bank: bank, trust: bank ? payTrust() : null, reference: offerPayRef(o.property_address, ref),
       refund: d.refund ? { given_at: d.refund.at, name: d.refund.name } : null, refunded_at: d.refunded_at || null, paid_claim: d.paid_claim || null, paid_amount: o.paid_at ? got : null, short: short, conditions: offerConds(d),
       id_needs: await offerIdNeeds(p, o), can_add_id: offerCanAddId(o),
       counter_invite: o.status === 'rejected' && d.counter_invite && d.counter_invite.open ? { hint_pcm: d.counter_invite.hint_pcm || null } : null,
