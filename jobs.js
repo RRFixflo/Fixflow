@@ -2034,6 +2034,7 @@ module.exports = function mountJobs(app, opts) {
     const check = { suggested: suggested, reasons: reasons, why: why, over: over };
     const pdf = pdfBase64 ? Buffer.from(pdfBase64, 'base64') : null;
     try { r.address = await canonicalAddress(p, r.address); } catch (e) { /* keep as typed */ }
+    let ours = true; try { ours = !!(await propertyMatch(p, r.address, true)); } catch (e) { console.error('Property check failed:', e.message); }
     const res = await p.query(
       `INSERT INTO jobs (urgency, due_at, tenant_name, tenant_email, tenant_phone, property_address,
          category, affected, symptom, location, description, access_days, access_time, access_notes,
@@ -2059,6 +2060,10 @@ module.exports = function mountJobs(app, opts) {
     try { await insertPhotos(p, id, decodePhotos(photos), 'tenant'); } catch (err) { console.error('Saving photos failed:', err.message); }
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'created', 'Report submitted by ' + (str(r.name, 200) || 'tenant') + ' (' + urgency + ').' + (reasons.length ? '\nEmergency because: ' + reasons.join(', ') + '.' : '') + (why ? '\nWhy urgent: ' + why : '') + (over ? '\n⚠ Looks ' + suggested + ' from the problem chosen — please check the urgency.' : '')]);
+    // Not one of our properties? The tenant was asked to check it; staff are told either way.
+    try {
+      if (!ours) await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', '⚠ This address isn’t on our property list' + (r.addrConfirmed ? ' — the tenant was asked to check it and said it is correct.' : '.') + ' Please check the property is one of ours.']);
+    } catch (err) { console.error('Property check failed:', err.message); }
     const trackToken = await ensureTrackToken(p, id);
     notifyNewJob({ id: id, urgency: urgency, over: over ? suggested : '', address: r.address, issue: [r.category, r.affected, r.symptom].filter(Boolean).join(' – '),
       location: r.location, photos: parseInt(r.photoCount, 10) || 0 });
@@ -8180,9 +8185,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     });
     res.json({ ok: true, items: out.slice(0, 8000) });
   }));
-  app.get('/api/admin/property-match', withDb(async function (p, req, res) {
-    const a = str(req.query.address, 500); if (!a || a.length < 5) return res.json({ ok: true, known: false });
-    const all = await allProperties(p), have = {}; all.forEach(function (x) { have[x.key] = 1; });
+  // Is this one of our properties? Exact key, the same address signature, or loosely the same home in the same postcode.
+  // strict: only real records of ours — tenancies, landlords' properties, property details and the available list —
+  // not addresses that only appear because someone reported a repair or booked a certificate online there.
+  async function propertyMatch(p, a, strict) {
+    const all = strict ? [] : await allProperties(p), have = {}; all.forEach(function (x) { have[x.key] = 1; });
+    if (strict) (await p.query(`SELECT address AS a FROM property_landlords WHERE address IS NOT NULL UNION SELECT address FROM property_info WHERE address IS NOT NULL
+      UNION SELECT address FROM available_props WHERE address IS NOT NULL`)).rows.forEach(function (r) { const k = propKey(r.a); if (k && !have[k]) { have[k] = 1; all.push({ key: k, address: r.a }); } });
     const more = (await p.query(`SELECT address AS a FROM tenancies WHERE address IS NOT NULL UNION SELECT address FROM landlord_properties WHERE address IS NOT NULL
       UNION SELECT address FROM available_props WHERE status = 'available'`)).rows;
     more.forEach(function (r) { const k = propKey(r.a); if (k && !have[k]) { have[k] = 1; all.push({ key: k, address: r.a }); } });
@@ -8191,6 +8200,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!hit) { const hs = all.filter(function (x) { return (ap.pc && addrLoose(ap, addrParts(x.address))) || (POSTCODE_RE.test(x.address) && POSTCODE_RE.test(a) && sameHome(a, x.address) && (POSTCODE_RE.exec(a)[1] + POSTCODE_RE.exec(a)[2]).toUpperCase() === (POSTCODE_RE.exec(x.address)[1] + POSTCODE_RE.exec(x.address)[2]).toUpperCase()); }); if (hs.length === 1) hit = hs[0]; }
     // No postcode typed: the one property with the same numbers and a street / building name in common.
     if (!hit && !ap.pc && ap.nums.length && ap.words.length) { const hs = all.filter(function (x) { const xp = addrParts(x.address); return addrLoose(Object.assign({}, ap, { pc: xp.pc }), xp); }); if (hs.length === 1) hit = hs[0]; }
+    return hit || null;
+  }
+  // The repair form asks whether the address typed is one of ours (yes / no only — never which property or whose).
+  app.get('/api/public/our-address', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const a = str(req.query.address, 500); if (!a || a.length < 5) return res.json({ ok: true, known: false });
+    res.json({ ok: true, known: !!(await propertyMatch(p, a, true)) });
+  }));
+  app.get('/api/admin/property-match', withDb(async function (p, req, res) {
+    const a = str(req.query.address, 500); if (!a || a.length < 5) return res.json({ ok: true, known: false });
+    const hit = await propertyMatch(p, a);
     res.json({ ok: true, known: !!hit, address: hit ? hit.address : null, key: hit ? hit.key : null });
   }));
   // Fill in EPCs from the register. Properties without one are re-checked every
@@ -10670,8 +10690,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const full = (await p.query('SELECT * FROM offers WHERE id = $1 AND paid_at IS NOT NULL', [id])).rows[0];
       if (!full) return res.status(400).json({ ok: false, error: 'not-paid' });
       const sent = await offerReceivedMail(req, p, full).catch(function (e) { console.error('Holding deposit receipt email failed:', e.message); return false; });
-      if (sent) await p.query("UPDATE offers SET data = data || jsonb_build_object('received_emailed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Holding deposit receipt emailed to ' + full.lead_email)])]);
-      return res.json({ ok: !!sent, receipt_emailed: !!sent });
+      if (sent) await p.query("UPDATE offers SET data = data || jsonb_build_object('received_emailed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Holding deposit receipt emailed to ' + sent.join(', '))])]);
+      return res.json({ ok: !!sent, receipt_emailed: sent || false });
     }
     if (b.landlord_reopen === true) { await p.query("UPDATE offers SET data = data - 'landlord_response', log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Landlord decision reopened - they can choose again')])]); return res.json({ ok: true }); }
     if (b.status === 'accepted' && !Array.isArray(b.credit) && req.user && req.user.id) { vals.push(JSON.stringify([{ id: req.user.id, name: req.user.name || '', share: 100 }])); sets.push("data = CASE WHEN data ? 'credit' THEN data ELSE data || jsonb_build_object('credit', $" + vals.length + "::jsonb) END"); }
@@ -10732,7 +10752,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (paidNew) {
       const full = (await p.query('SELECT * FROM offers WHERE id = $1 AND paid_at IS NOT NULL', [id])).rows[0];
       receiptEmailed = full ? await offerReceivedMail(req, p, full).catch(function (e) { console.error('Holding deposit receipt email failed:', e.message); return false; }) : null;
-      if (receiptEmailed) await p.query("UPDATE offers SET data = data || jsonb_build_object('received_emailed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Holding deposit receipt emailed to ' + full.lead_email)])]).catch(function () {});
+      if (receiptEmailed) await p.query("UPDATE offers SET data = data || jsonb_build_object('received_emailed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Holding deposit receipt emailed to ' + receiptEmailed.join(', '))])]).catch(function () {});
     }
     // Rejected: email the applicant (with the counter-offer link when invited, else the refund link if they paid).
     let rejectEmailed = null;
@@ -10745,13 +10765,24 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   // "We've received your holding deposit": sent once, the first time it's marked received — the amount, the property
   // and reference, what happens next, their tracking link and the receipt PDF attached (kept in Sent emails).
+  // Everyone on the offer form with an email: the lead applicant and each tenant (once each).
+  function offerApplicantEmails(o) {
+    const d = o.data || {}, out = [], seen = {}, ok = function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(e); };
+    [{ name: o.lead_name, email: o.lead_email }].concat(Array.isArray(d.tenants) ? d.tenants : []).forEach(function (t) {
+      const e = String((t && t.email) || '').trim(), k = e.toLowerCase(); if (!ok(e) || seen[k]) return; seen[k] = 1;
+      out.push({ email: e, first: String((t && t.name) || '').trim().split(/\s+/)[0] || '' });
+    });
+    return out;
+  }
   async function offerReceivedMail(req, p, o) {
-    const to = String(o.lead_email || '').trim(); if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(to) || !canEmail() || !sendEmail) return false;
+    const people = offerApplicantEmails(o); if (!people.length || !canEmail() || !sendEmail) return false;
+    const to = people.map(function (x) { return x.email; }), firsts = people.map(function (x) { return x.first; }).filter(Boolean);
     const d = o.data || {}, ref = 'OF' + String(o.id).padStart(4, '0'), amt = d.paid_amount != null ? Number(d.paid_amount) : Number((d.money || {}).holding) || 0;
     const due = Number((d.money || {}).holding) || 0, short = due && amt + 0.005 < due ? Math.round((due - amt) * 100) / 100 : 0;
     const track = o.track_token ? (OFFER_ORIGIN || PUBLIC_URL) + '/offer/track/' + o.track_token : '';
     const subject = 'Holding deposit received — ' + shortAddrText(o.property_address) + ' (' + ref + ')';
-    const text = 'Dear ' + (String(o.lead_name || '').trim().split(/\s+/)[0] || 'Applicant') + ',\n\n' +
+    const dear = firsts.length > 1 ? firsts.slice(0, -1).join(', ') + ' and ' + firsts[firsts.length - 1] : (firsts[0] || 'Applicant');
+    const text = 'Dear ' + dear + ',\n\n' +
       'Thank you — we have received your holding deposit' + (amt ? ' of ' + gbp(amt) : '') + ' for ' + o.property_address + ' (reference ' + ref + '). Your receipt is attached.\n\n' +
       (short ? 'The holding deposit is ' + gbp(due) + ', so ' + gbp(short) + ' is still to pay — please send it using the same bank details and reference.\n\n' : '') +
       (o.status === 'accepted' ? 'Your offer has been accepted, and we will be in touch about referencing and the tenancy agreement.' : 'We will now put your offer to the landlord and let you know their decision.') +
@@ -10759,9 +10790,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
       (track ? '\n\nYou can follow your offer, and download your receipt and signed agreement, here: ' + track : '') +
       '\n\nIf you have any questions, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\nResidential Realtors';
     const atts = [{ filename: 'Holding deposit receipt - ' + ref + '.pdf', content: Buffer.from(await receiptPdf(o)).toString('base64') }];
-    const r = await sendEmail({ to: [to], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, 'Holding deposit received'), attachments: atts }).catch(function (e) { return { ok: false, error: e.message }; });
-    logSent(req, [to], [], 'info@residentialrealtors.co.uk', subject, text + '\n\n[Attached: ' + atts[0].filename + ']', r, r && r.ok ? await keepEmailFiles(p, atts) : []);
-    return !!(r && r.ok);
+    const r = await sendEmail({ to: to, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, 'Holding deposit received'), attachments: atts }).catch(function (e) { return { ok: false, error: e.message }; });
+    logSent(req, to, [], 'info@residentialrealtors.co.uk', subject, text + '\n\n[Attached: ' + atts[0].filename + ']', r, r && r.ok ? await keepEmailFiles(p, atts) : []);
+    return r && r.ok ? to : false;
   }
   // "Your offer wasn't accepted" — kind, with the reason when it's one we can share, the counter-offer link (their
   // tracking page, where they commit to it) or, when they paid and aren't invited to counter, the refund link.
