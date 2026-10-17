@@ -436,6 +436,11 @@
   .addr-list li.addr-status::before { display: none; }
   .addr-list li.addr-status:hover { background: none; }
   .addr-hint { font-size: 0.78rem; color: var(--ink-soft); margin-top: 7px; }
+  .addr-check { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--warn); background: var(--warn-tint); border-radius: 12px; color: var(--ink); }
+  .addr-check b { display: block; font-size: 0.95rem; }
+  .addr-check p { margin: 4px 0 10px; font-size: 0.86rem; line-height: 1.45; color: var(--ink-soft); overflow-wrap: anywhere; }
+  .addr-check-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .addr-check-btns .btn { flex: 1 1 160px; }
   .addr-hint.ok { color: var(--ok); font-weight: 500; }
   .field.invalid .err { display: block; }
 
@@ -1401,6 +1406,11 @@
       </div>
       <div class="addr-hint" id="addrHint" hidden>Start typing your address or postcode, then pick it from the list.</div>
       <div class="err" id="addrErr">Please enter the property address, including your door number and postcode.</div>
+      <div class="addr-check" id="addrCheck" hidden role="alert">
+        <b>Please check your address</b>
+        <p>We can’t find <span id="addrCheckTxt"></span> on our list of properties. Almost every report comes from a home we manage, so please make sure the flat or door number, building name and postcode are right.</p>
+        <div class="addr-check-btns"><button type="button" class="btn ghost" id="addrFix">Let me check it</button><button type="button" class="btn primary" id="addrOk">It’s correct — send my report</button></div>
+      </div>
     </div>
 
     <div class="field" id="f-email">
@@ -2665,6 +2675,10 @@
     document.getElementById('s-photos').textContent = state.photos.length + (state.photos.length === 1 ? ' photo' : ' photos');
   }
 
+  // "Please check your address": fix it (back to the box) or confirm it's right and send.
+  document.getElementById('addrFix').addEventListener('click', function(){ document.getElementById('addrCheck').hidden = true; var i = document.getElementById('propAddress'); i.focus(); i.select(); });
+  document.getElementById('addrOk').addEventListener('click', function(){ state.addrConfirmed = document.getElementById('propAddress').value.trim().replace(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i, function(m, x, y){ return x.toUpperCase() + ' ' + y.toUpperCase(); }); document.getElementById('addrCheck').hidden = true; clearError('f-address'); document.getElementById('submitBtn').click(); });
+  document.getElementById('propAddress').addEventListener('input', function(){ var b = document.getElementById('addrCheck'); if (b && !b.hidden) b.hidden = true; });
   document.getElementById('submitBtn').addEventListener('click', function(){
     var ok = true;
     var name = document.getElementById('fullName').value.trim();
@@ -2698,6 +2712,26 @@
       return;
     }
 
+    // Not one of our properties? Almost every report is from a home we manage, so ask them to check the address
+    // first (once per address). If the check can't be reached, the report still goes.
+    if (state.addrConfirmed !== addr && state.addrKnown !== addr) {
+      var btnS = document.getElementById('submitBtn'), btnTxt = btnS.textContent;
+      btnS.disabled = true; btnS.textContent = 'Checking…';
+      var ctl = window.AbortController ? new AbortController() : null; var tmo = setTimeout(function(){ if (ctl) ctl.abort(); }, 6000);
+      fetch('/api/public/our-address?address=' + encodeURIComponent(addr), { signal: ctl ? ctl.signal : undefined }).then(function(r){ return r.json(); })
+        .then(function(d){ return d && d.ok ? d.known : true; }, function(){ return true; })
+        .then(function(known){
+          clearTimeout(tmo); btnS.disabled = false; btnS.textContent = btnTxt;
+          if (known) { state.addrKnown = addr; btnS.click(); return; }
+          var box = document.getElementById('addrCheck'); document.getElementById('addrCheckTxt').textContent = '“' + addr + '”';
+          var al = document.getElementById('addrList'); if (al) { al.hidden = true; al.innerHTML = ''; } document.getElementById('propAddress').setAttribute('aria-expanded', 'false');
+          box.hidden = false; setError('f-address'); document.getElementById('addrErr').textContent = '';
+          box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      return;
+    }
+    state.addrUnlisted = state.addrConfirmed === addr;
+
     state.name = name;
     state.address = addr;
     state.email = email;
@@ -2726,6 +2760,7 @@
     lines.push('REPAIR REPORT — Residential Realtors');
     lines.push('');
     lines.push('Property: ' + state.address);
+    if(state.addrUnlisted) lines.push('(Not found on our property list — the tenant checked it and confirmed it is correct.)');
     lines.push('Reported by: ' + state.name);
     lines.push('Email: ' + state.email);
     if(state.phone) lines.push('Phone: ' + state.phone);
@@ -3222,7 +3257,7 @@
           photos: [],
           // The same details as structured fields, saved as a job in the database.
           report: {
-            name: state.name, email: state.email, phone: state.phone, address: state.address,
+            name: state.name, email: state.email, phone: state.phone, address: state.address, addrConfirmed: !!state.addrUnlisted,
             category: state.category, affected: state.subLabel, symptom: state.symptomLabel,
             location: state.location, description: state.description, urgency: state.urgency,
             emergencyReasons: state.emergencyReasons || [], urgentReason: state.urgentReason || '', suggestedUrgency: state.suggestedUrgency || '',
