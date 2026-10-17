@@ -244,6 +244,16 @@
   .dpay-h h2 { margin:4px 0 0; font-size:1.3rem; letter-spacing:-.02em; }
   .damt { font-size:1.9rem; font-weight:800; letter-spacing:-.03em; color:var(--ink,#101828); text-align:right; line-height:1.05; }
   .damt small { display:block; font-size:.74rem; font-weight:600; color:var(--warn); letter-spacing:0; margin-top:4px; }
+  .paytrust { margin:16px 0 4px; border:1px solid var(--line); border-radius:16px; padding:14px 16px; background:#f8fafc; }
+  .paytrust .tr-h { font-size:.74rem; letter-spacing:.09em; text-transform:uppercase; font-weight:800; color:var(--ink, #0b1f3a); margin:0 0 10px; }
+  .paytrust .tr-row { display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-top:1px solid var(--line); }
+  .paytrust .tr-row:first-of-type { border-top:0; padding-top:0; }
+  .paytrust .tr-ico { flex:0 0 26px; font-size:1.15rem; line-height:1.4; }
+  .paytrust .tr-row > div { min-width:0; overflow-wrap:anywhere; }
+  .paytrust b { font-weight:700; }
+  .paytrust p { margin:2px 0 0; font-size:.9rem; line-height:1.5; color:var(--soft, #475467); }
+  .paytrust a { color:#1d4ed8; font-weight:600; font-size:.9rem; }
+  .paytrust .tr-row > div > a { display:inline-block; margin-top:4px; }
   .paybox { margin-top:16px; border:1px solid var(--line); border-radius:16px; overflow:hidden; }
   .paybox .pr { display:grid; grid-template-columns:130px 1fr auto; align-items:center; gap:10px; padding:11px 14px; border-bottom:1px solid var(--line); }
   .paybox .pr:last-child { border-bottom:0; }
@@ -943,6 +953,18 @@
     return bank ? '<div class="bank"><div><span>Account name</span><b>' + esc(bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(bank.account) + '</b></div>' + (bank.iban ? '<div><span>IBAN <small style="color:var(--faint)">(paying from abroad)</small></span><b>' + esc(bank.iban) + '</b></div>' : '') + (bank.swift ? '<div><span>SWIFT / BIC</span><b>' + esc(bank.swift) + '</b></div>' : '') + '<div><span>Amount</span><b>' + gbp(amount || 0) + '</b></div><div><span>Reference</span><b>' + esc(ref) + '</b></div></div><p class="hint" style="margin:-6px 0 12px">Please use exactly this payment reference (no spaces) so we can match your payment to your offer.</p>'
       : '<p>We’ll send you our bank details to pay it.</p>';
   }
+  // "Before you pay": who the account belongs to, our protection numbers, the signed terms and a viewing first.
+  function trustHtml(t, tok){
+    if (!t) return '';
+    var own = !t.payee || /estallion/i.test(t.payee);
+    var row = function(ico, h, body, link){ return '<div class="tr-row"><span class="tr-ico" aria-hidden="true">' + ico + '</span><div><b>' + h + '</b><p>' + body + '</p>' + (link || '') + '</div></div>'; };
+    return '<div class="paytrust"><div class="tr-h">Before you pay</div>' +
+      row('🏢', own ? 'Why the account is in the name ' + esc(t.company) : 'Who you’re paying', 'Residential Realtors is the trading name of <b>' + esc(t.company) + '</b> (registered in England, company no. ' + esc(t.company_no) + ', ' + esc(t.address) + '), so payments to us go to the company’s bank account.', '<a target="_blank" rel="noopener" href="' + esc(t.ch_url) + '">Check us on Companies House ↗</a>') +
+      row('🛡️', 'Your money is protected', 'Propertymark Client Money Protection, membership no. <b>' + esc(t.cmp) + '</b>' + (t.propertymark ? ' · Propertymark member no. <b>' + esc(t.propertymark) + '</b>' : '') + '. Redress scheme: The Property Ombudsman' + (t.tpo ? ', membership no. <b>' + esc(t.tpo) + '</b>' : '') + '.') +
+      row('📄', 'Your written holding deposit agreement', 'The terms you signed — including when the holding deposit is and isn’t refunded — are in your signed agreement. If the landlord rejects your offer or withdraws the property, it’s returned within 24 hours; once accepted it goes towards your first month’s rent.', tok ? '<a target="_blank" rel="noopener" href="/api/offers/track/' + esc(tok) + '/offer.pdf">⬇ Download your signed agreement (PDF)</a>' : '') +
+      row('🎥', 'Want to see it again first?', 'We’re happy to arrange another viewing or a live video viewing before you pay — call <a href="tel:02070968131">' + esc(t.phone) + '</a> or email <a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a>.') +
+      '</div>';
+  }
   function trackBox(url){
     var wa = 'https://wa.me/?text=' + encodeURIComponent('My offer with Residential Realtors — track it here: ' + url);
     return '<div class="trackbox"><b>Track your offer</b><div class="hint" style="margin:2px 0 0">Save this link — it shows when your holding deposit arrives and when the landlord decides.</div>' +
@@ -976,7 +998,7 @@
       '<section class="card dpay fade"><div class="dpay-h"><div><span class="eyebrow">Next step</span><h2>Pay your holding deposit</h2><p class="hint" style="margin:2px 0 0">One week’s rent, by bank transfer — please pay it <b>now</b> to reserve the property.</p></div><div class="damt">' + gbp(m.holding || 0) + '<small>due now</small></div></div>' +
         (d.bank ? '<div class="paybox">' + copyRow('Account name', d.bank.payee) + copyRow('Sort code', d.bank.sort_code) + copyRow('Account number', d.bank.account) + (d.bank.iban ? copyRow('IBAN', d.bank.iban) : '') + (d.bank.swift ? copyRow('SWIFT / BIC', d.bank.swift) : '') + copyRow('Reference', d.reference, true) + '</div>' +
           '<p class="dnote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span>Use exactly this reference, <b>' + esc(d.reference) + '</b>, with no spaces, so we can match your payment. Paying from abroad? Use the IBAN and SWIFT.</span></p>'
-          : '<p>We’ll send you our bank details to pay it.</p>') +
+          : '<p>We’ll send you our bank details to pay it.</p>') + (d.bank ? trustHtml(d.trust, tok) : '') +
         (tok ? '<div id="paidRow" style="margin-top:16px">' + '<button type="button" class="paid-big" data-paid-now="' + esc(tok) + '"><span class="pb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="pb-t"><b>I’ve paid the holding deposit</b><small>Tap here once you’ve made the bank transfer</small></span></button>' + '</div><div class="btnrow" style="margin-top:10px"><a class="btn" target="_blank" rel="noopener" href="/api/offers/track/' + esc(tok) + '/offer.pdf">⬇ Signed agreement (PDF)</a></div>' +
           '<div class="paid-sticky" id="paidSticky">' + '<button type="button" class="paid-big" data-paid-now="' + esc(tok) + '"><span class="pb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="pb-t"><b>I’ve paid the holding deposit</b><small>Tap here once you’ve made the bank transfer</small></span></button>' + '</div>' : '') + '</section>' +
       '<section class="card fade"><h2>What happens next</h2><ol class="timeline">' + steps.map(function(x, i){ return '<li class="' + x[0] + '"><div class="dot">' + (x[0] === 'ok' ? '✓' : i + 1) + '</div><div><b>' + esc(x[1]) + '</b><span>' + esc(x[2]) + '</span></div></li>'; }).join('') + '</ol>' +
@@ -1032,7 +1054,7 @@
         '<ol class="timeline">' + steps.map(function(s, i){ return '<li class="' + s[0] + '"><div class="dot">' + (s[0] === 'ok' ? '✓' : s[0] === 'no' ? '✕' : i + 1) + '</div><div><b>' + s[1] + '</b><span>' + esc(s[2]) + '</span></div></li>'; }).join('') + '</ol>' +
         ((d.conditions || []).length ? '<div class="tconds"><b>Your conditions</b>' + d.conditions.map(function(c){ return '<div class="tc ' + c.status + '"><span>' + esc(c.text) + '</span><em>' + (c.status === 'yes' ? '✓ Agreed' : c.status === 'no' ? '✕ Not agreed' : 'Awaiting the landlord') + '</em></div>'; }).join('') + '</div>' : '') +
         (paid && d.short > 0 && d.bank ? '<div class="dwarn light"><b>We received ' + gbp(d.paid_amount) + ' — ' + gbp(d.short) + ' of your holding deposit is still to pay.</b> Please send the rest using the details below.</div><h2>Pay the rest of the holding deposit</h2>' + bankHtml(d.bank, d.short, d.reference) : '') +
-        (d.bank && !paid ? '<h2>Pay the holding deposit</h2>' + bankHtml(d.bank, m.holding, d.reference) +
+        (d.bank && !paid ? '<h2>Pay the holding deposit</h2>' + bankHtml(d.bank, m.holding, d.reference) + trustHtml(d.trust, tm[1]) +
           (d.paid_claim ? '<div class="note-warn" style="background:var(--ok-t);color:#0d6b37"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Thanks — you told us you paid on ' + esc(longDay(d.paid_claim.date)) + '. We’ll confirm here once it arrives in our account.</span></div>'
             : '') : '') +
         '<div class="btnrow" style="margin-top:10px"><a class="btn' + (paid ? '' : ' dark') + '" target="_blank" rel="noopener" href="/api/offers/track/' + tm[1] + '/offer.pdf">⬇ Signed agreement (PDF)</a>' + (paid ? '<a class="btn dark" target="_blank" rel="noopener" href="/api/offers/track/' + tm[1] + '/receipt.pdf">⬇ Download receipt</a>' : '') + '</div></div>' +
