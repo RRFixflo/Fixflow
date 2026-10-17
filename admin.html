@@ -529,7 +529,7 @@
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
   .sp-sub { display: block; margin: 10px 0 6px; font-size: .92rem; } .sp-vw { margin-bottom: 6px; }
-  .oc-amt { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--dk-bd-fedf89, #fedf89); background: var(--dk-bg-fffaeb, #fffaeb); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; } .oc-amt label { font-weight: 600; font-size: .9rem; } .oc-amt-r { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .oc-amt-r .inp { width: 120px; font-size: 16px; }
+  .oc-amt { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--dk-bd-fedf89, #fedf89); background: var(--dk-bg-fffaeb, #fffaeb); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; } .oc-amt label { font-weight: 600; font-size: .9rem; } .oc-amt-r { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .oc-amt-r .inp { width: 120px; font-size: 16px; } .oc-amt label.oc-amt-mail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 500; cursor: pointer; overflow-wrap: anywhere; } .oc-amt-mail input { width: 18px; height: 18px; }
   .oc-rej select, .oc-rej textarea { width: 100%; }
   .oc-chk { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; font-size: .85rem; cursor: pointer; }
   .oc-chk input { margin-top: 3px; flex: none; }
@@ -14392,13 +14392,16 @@
       : '<span class="oc-pill ok">💷 Deposit received ' + day + (d.paid_amount != null ? ' · ' + esc(gbp(got)) : '') + '</span>';
   }
   // How much arrived: a box on the card itself (some phone browsers silently block pop-up questions).
-  function offAmountBox(btn, o, onSave){
+  function offAmountBox(btn, o, onSave, withMail){
     var row = btn.parentNode, old = row.parentNode.querySelector('.oc-amt'); if (old) { old.remove(); return; }
     var d = o.data || {}, due = Number((d.money || {}).holding) || 0, box = document.createElement('div'); box.className = 'oc-amt';
+    var canMail = withMail && /@/.test(o.lead_email || '');
     box.innerHTML = '<label>💷 How much arrived in the bank? <span class="muted-note" style="margin:0">holding deposit due ' + esc(gbp(due)) + '</span></label><div class="oc-amt-r"><span>£</span><input class="inp" type="text" inputmode="decimal" value="' + esc(String(d.paid_amount != null ? d.paid_amount : due)) + '"><button type="button" class="btn small primary" data-amt-ok>Save</button><button type="button" class="btn small ghost" data-amt-x>Cancel</button></div>';
+    // Marking it received: choose whether the applicant is emailed their receipt (ticked unless already emailed).
+    if (withMail) box.insertAdjacentHTML('beforeend', canMail ? '<label class="oc-amt-mail"><input type="checkbox" data-amt-mail' + (d.received_emailed_at ? '' : ' checked') + '> ✉ Email ' + esc(String(o.lead_name || 'the applicant').split(/\s+/)[0]) + ' the receipt <span class="muted-note" style="margin:0">' + esc(o.lead_email) + (d.received_emailed_at ? ' · already emailed ' + esc(fmtShort(d.received_emailed_at)) : '') + '</span></label>' : '<div class="muted-note" style="margin:6px 0 0">No email address on this offer, so no receipt email can be sent.</div>');
     row.parentNode.insertBefore(box, row.nextSibling);
     var inp = box.querySelector('input'); setTimeout(function(){ inp.focus(); inp.select(); }, 30);
-    var save = function(){ var n = Math.round(parseFloat(String(inp.value).replace(/[£,\s]/g, '')) * 100) / 100; if (!(n > 0)) { toast('Enter the amount received, e.g. ' + due); inp.focus(); return; } busy(box.querySelector('[data-amt-ok]'), true, 'Saving…'); onSave(n); };
+    var save = function(){ var n = Math.round(parseFloat(String(inp.value).replace(/[£,\s]/g, '')) * 100) / 100; if (!(n > 0)) { toast('Enter the amount received, e.g. ' + due); inp.focus(); return; } busy(box.querySelector('[data-amt-ok]'), true, 'Saving…'); var mc = box.querySelector('[data-amt-mail]'); onSave(n, !!(mc && mc.checked)); };
     box.addEventListener('click', function(ev){ ev.stopPropagation(); if (ev.target.closest('[data-amt-x]')) box.remove(); else if (ev.target.closest('[data-amt-ok]')) save(); });
     inp.addEventListener('keydown', function(ev){ if (ev.key === 'Enter') { ev.preventDefault(); save(); } });
   }
@@ -14871,7 +14874,7 @@
       '<footer class="oc-actions">' + (o.status !== 'rejected' && o.status !== 'withdrawn' ? '<button type="button" class="btn small" data-off-edit>✏️ Rent &amp; move-in</button>' : '') +
         (o.status === 'new' ? '<button type="button" class="btn small primary" data-off-act="accepted">✓ Accept</button><button type="button" class="btn small" data-off-act="rejected">✕ Reject</button>'
           : '<button type="button" class="btn small ghost" data-off-act="new">Undo ' + ({ accepted: 'accept', rejected: 'reject', withdrawn: 'withdrawal' }[o.status] || '') + '</button>') +
-        (o.status === 'withdrawn' ? '' : o.paid_at ? '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/receipt.pdf">🧾 Receipt</a><button type="button" class="btn small ghost" data-off-amount>Amount received</button><button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Deposit received</button>') +
+        (o.status === 'withdrawn' ? '' : o.paid_at ? '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/receipt.pdf">🧾 Receipt</a>' + (o.lead_email ? '<button type="button" class="btn small" data-off-rcmail>✉ ' + (d.received_emailed_at ? 'Email receipt again' : 'Email receipt') + '</button>' : '') + '<button type="button" class="btn small ghost" data-off-amount>Amount received</button><button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Deposit received</button>') +
         (o.status === 'rejected' && o.lead_email ? '<a class="btn small primary" data-off-refund href="' + esc(refundEmail()) + '">✉ ' + (o.paid_at ? 'Email for refund details' : 'Email them') + '</a>' : '') +
         (o.status === 'accepted' && (o.lead_email || (d.tenants || []).some(function(t){ return t && t.email; })) ? '<button type="button" class="btn small primary" data-off-accmail>✉ Offer confirmation</button>' : '') +
         (o.status === 'accepted' && !staffMode ? '<button type="button" class="btn small" data-off-tenants title="Save every applicant in your Tenants list at this property">👥 ' + (d.tenants_added_at ? 'Added as tenants ✓' : 'Add as tenants') + '</button><button type="button" class="btn small" data-off-tcy>🏠 Start tenancy</button>' : '') +
@@ -14991,11 +14994,18 @@
     if (cb) { var cur = (offConds(o)[Number(cb.dataset.cond)] || {}).status, v = cur === cb.dataset.v ? '' : cb.dataset.v;
       api('POST', '/api/admin/offers/' + o.id + '/conditions', { i: Number(cb.dataset.cond), v: v }).then(function(d2){ if (!d2.ok) { toast('Couldn’t save that'); return; } o.data.cond_decisions = {}; d2.conditions.forEach(function(c, i){ if (c.status) o.data.cond_decisions[i] = c.status; }); var tmp = document.createElement('div'); tmp.innerHTML = offCondsHtml(o); cb.closest('.oc-cond').replaceWith(tmp.firstChild); }); return; }
     var am = e.target.closest('[data-off-amount]');
+    var rcm = e.target.closest('[data-off-rcmail]');
+    if (rcm) {
+      var rcAt = (o.data || {}).received_emailed_at; if (rcAt && !confirm('The receipt was already emailed to ' + o.lead_email + ' on ' + fmtShort(rcAt) + '. Send it again?')) return;
+      busy(rcm, true, 'Sending…');
+      api('POST', '/api/admin/offers/' + o.id, { send_receipt: true }).then(function(d2){ busy(rcm, false); toast(d2.ok && d2.receipt_emailed ? '✉ Receipt emailed to ' + o.lead_email : 'Couldn’t send the receipt email'); if (d2.ok) loadOffers(); });
+      return;
+    }
     if (am) { offAmountBox(am, o, function(nv){ api('POST', '/api/admin/offers/' + o.id, { paid_amount: nv }).then(function(d2){ toast(d2.ok ? 'Amount received saved: ' + gbp(nv) : 'Couldn’t save that'); loadOffers(); }); }); return; }
     var a = e.target.closest('[data-off-act]'), pd = e.target.closest('[data-off-paid]');
     if (a || pd) {
       var body = a ? { status: a.dataset.offAct } : { paid: pd.dataset.offPaid === '1' };
-      if (pd && body.paid) { offAmountBox(pd, o, function(got){ api('POST', '/api/admin/offers/' + o.id, { paid: true, paid_amount: got }).then(function(d){ if (!d.ok) { toast('Couldn’t save that'); loadOffers(); return; } toast('Holding deposit received · ' + gbp(got) + (d.receipt_emailed ? ' — receipt emailed to the applicant' : d.receipt_emailed === false ? ' — the receipt email couldn’t be sent' : '')); loadOffers(); }); }); return; }
+      if (pd && body.paid) { offAmountBox(pd, o, function(got, mail){ api('POST', '/api/admin/offers/' + o.id, { paid: true, paid_amount: got, receipt_email: mail }).then(function(d){ if (!d.ok) { toast('Couldn’t save that'); loadOffers(); return; } toast('Holding deposit received · ' + gbp(got) + (d.receipt_emailed ? ' — receipt emailed to the applicant' : d.receipt_emailed === false ? ' — the receipt email couldn’t be sent' : '')); loadOffers(); }); }, true); return; }
       if (a && a.dataset.offAct === 'rejected') { offRejectBox(a, o); return; }
       busy(a || pd, true, '…');
       api('POST', '/api/admin/offers/' + o.id, body).then(function(d){

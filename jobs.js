@@ -10665,6 +10665,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await p.query('UPDATE offers SET data = data || $2::jsonb, log = log || $3::jsonb WHERE id = $1', [id, JSON.stringify(upd), JSON.stringify(said.map(function (t) { return offerLog(req, t); }))]);
       return res.json({ ok: true, money: upd.money || cd.money, move_in: upd.move_in !== undefined ? upd.move_in : cd.move_in });
     }
+    // "✉ Email receipt" on a paid offer: send (or send again) the holding deposit receipt email.
+    if (b.send_receipt === true) {
+      const full = (await p.query('SELECT * FROM offers WHERE id = $1 AND paid_at IS NOT NULL', [id])).rows[0];
+      if (!full) return res.status(400).json({ ok: false, error: 'not-paid' });
+      const sent = await offerReceivedMail(req, p, full).catch(function (e) { console.error('Holding deposit receipt email failed:', e.message); return false; });
+      if (sent) await p.query("UPDATE offers SET data = data || jsonb_build_object('received_emailed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Holding deposit receipt emailed to ' + full.lead_email)])]);
+      return res.json({ ok: !!sent, receipt_emailed: !!sent });
+    }
     if (b.landlord_reopen === true) { await p.query("UPDATE offers SET data = data - 'landlord_response', log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Landlord decision reopened - they can choose again')])]); return res.json({ ok: true }); }
     if (b.status === 'accepted' && !Array.isArray(b.credit) && req.user && req.user.id) { vals.push(JSON.stringify([{ id: req.user.id, name: req.user.name || '', share: 100 }])); sets.push("data = CASE WHEN data ? 'credit' THEN data ELSE data || jsonb_build_object('credit', $" + vals.length + "::jsonb) END"); }
     if (['new', 'accepted', 'rejected', 'withdrawn'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length, "decided_at = CASE WHEN $" + vals.length + " = 'new' THEN NULL ELSE now() END"); notes.push(b.status === 'accepted' ? 'Offer accepted' : b.status === 'rejected' ? 'Offer rejected' : b.status === 'withdrawn' ? 'Marked as withdrawn' : 'Decision undone'); }
@@ -10700,8 +10708,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
       notes.push(cr.length ? 'Offer credited to ' + cr.map(function (c) { return c.name + (cr.length > 1 ? ' (' + c.share + '%)' : ''); }).join(' and ') : 'Offer credit cleared');
     }
     if (b.refund_asked === true) dataSets.push("jsonb_build_object('refund_asked', to_jsonb(now()))");
-    // Holding deposit marked received for the first time: the applicant is emailed their receipt (after the update below).
-    const paidNew = b.paid === true ? (await p.query("SELECT id FROM offers WHERE id = $1 AND paid_at IS NULL AND (data->>'received_emailed_at') IS NULL", [id])).rows[0] : null;
+    // Holding deposit marked received for the first time: the applicant is emailed their receipt (after the update below),
+    // unless staff untick “Email … the receipt”.
+    const paidNew = b.paid === true && b.receipt_email !== false ? (await p.query("SELECT id FROM offers WHERE id = $1 AND paid_at IS NULL AND (data->>'received_emailed_at') IS NULL", [id])).rows[0] : null;
     // Refund marked as sent for the first time: the applicant gets a confirmation email (after the update below).
     const refundNew = b.refunded === true ? (await p.query("SELECT id, lead_name, lead_email, property_address, paid_at, data FROM offers WHERE id = $1 AND (data->>'refunded_at') IS NULL", [id])).rows[0] : null;
     if (typeof b.refunded === 'boolean') { dataSets.push("jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
