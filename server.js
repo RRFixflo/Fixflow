@@ -7,12 +7,12 @@ const PORT = process.env.PORT || 3000;
 // Read email settings from the environment, never hardcoded — set these in
 // Railway under Settings -> Variables:
 //   RESEND_API_KEY   (required)  the API key from your Resend account
-//   REPORT_TO_EMAIL   (optional) defaults to jayk@residentialrealtors.co.uk
+//   REPORT_TO_EMAIL   where repair reports are emailed (set in Railway; defaults to the office inbox)
 //   REPORT_FROM_EMAIL (optional) must be on a domain verified in Resend;
 //                                 defaults to Resend's shared test sender,
 //                                 which only works for quick testing.
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const REPORT_TO_EMAIL = process.env.REPORT_TO_EMAIL || 'jayk@residentialrealtors.co.uk';
+const REPORT_TO_EMAIL = process.env.REPORT_TO_EMAIL || 'info@residentialrealtors.co.uk';
 const REPORT_FROM_EMAIL = process.env.REPORT_FROM_EMAIL || 'Repair Reports <onboarding@resend.dev>';
 
 // AI tips / translation / urgency-opinion settings — set in Railway under
