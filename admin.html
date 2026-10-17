@@ -10605,16 +10605,15 @@
     return list.slice(0, 2).map(function(o){ return o.x; });
   }
   function apwMsg(){
-    var g = apw.g, first = String(g.name || '').trim().split(/\s+/)[0] || 'there', addr = g.address && g.address !== '(no property given)' ? publicAddr(g.address).split(',').slice(0, 2).join(',') : '';
+    var g = apw.g, first = String(g.name || '').trim().split(/\s+/)[0] || 'there', addr = g.address && g.address !== '(no property given)' && !/^Rightmove ref\b/i.test(g.address) ? publicAddr(g.address).split(',').slice(0, 2).join(',') : '';
     var me = String((meta.user && meta.user.name) || '').replace(/^(Owner|Offers staff)$/, ''), sign = '\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors\n0207 096 8131';
     var alts = apw.alts.map(function(x){ return apwLine(x) + (apwLink(x) ? '\n' + apwLink(x) : ''); }).join('\n\n'), many = apw.alts.length > 1;
     if (apw.kind === 'usual') { var m = leadMsg(g); return { subject: m.subject, body: m.body }; }
-    if (apw.kind === 'gone') return { subject: (addr ? addr + ' — no longer available' : 'Update on your enquiry') + (alts ? ', but we have ' + (many ? 'similar homes' : 'something similar') : ''), body: 'Hi ' + first + ',\n\nThank you for your enquiry' + (addr ? ' about ' + addr : '') + '. Unfortunately the property you enquired about is no longer available.' +
-      (alts ? '\n\nHowever, we have ' + (many ? 'some similar homes' : 'something similar') + ' that might suit you:\n\n' + alts + '\n\nWould you like to arrange a viewing? Just reply with a few days and times that suit you.' : '\n\nWe have new homes coming up all the time — let us know what you’re looking for (area, budget, bedrooms and move-in date) and we’ll send you the best matches.') + sign };
+    if (apw.kind === 'gone') return { subject: (addr ? addr + ' — no longer available' : 'Update on your enquiry') + (alts ? ', but I have ' + (many ? 'similar homes' : 'something similar') : ''), body: 'Hi ' + first + ',\n\nThank you for your enquiry' + (addr ? ' about ' + addr : '') + '. Unfortunately the property you enquired about is no longer available.' +
+      (alts ? '\n\nHowever, I do have ' + (many ? 'some similar homes' : 'something similar') + ' that might suit you:\n\n' + alts + '\n\nWould you like to arrange a viewing? Just reply with a few days and times that suit you.' : '\n\nWe have new homes coming up all the time — let us know what you’re looking for (area, budget, bedrooms and move-in date) and we’ll send you the best matches.') + sign };
     var own = apwOwn(), ownLink = own ? apwLink(own) : '';
     return { subject: (addr ? addr + ' is available to view' : 'Arranging your viewing'), body: 'Hi ' + first + ',\n\nThank you for your enquiry' + (addr ? ' about ' + addr : '') + '. Good news — it’s still available and we’d love to show it to you.' + (ownLink ? '\n\nPhotos and details: ' + ownLink : '') +
-      '\n\nWhen would you be available for a viewing? Please send us a few days and times that suit you and we’ll book you in.' +
-      (alts ? '\n\nYou might also like ' + (many ? 'these' : 'this one') + ':\n\n' + alts : '') + sign };
+      '\n\nWhen would you be available for a viewing? Please send us a few days and times that suit you and we’ll book you in.' + sign };
   }
   function apwDraw(){
     [].forEach.call($('apwKinds').querySelectorAll('[data-apw-kind]'), function(b){ b.classList.toggle('on', b.dataset.apwKind === apw.kind); });
@@ -10628,7 +10627,7 @@
       : st === 'gone' ? '⚠ ' + esc(shortAddr(apw.g.address)) + ' is no longer available (let or withdrawn)' + (apw.kind === 'view' ? ' — don’t tell them it’s available.' : ' — similar homes are suggested below.')
       : st === 'loading' ? '⏳ Checking whether ' + esc(shortAddr(apw.g.address)) + ' is still available…'
       : st === 'unknown' ? '⚠ Couldn’t find ' + esc(shortAddr(apw.g.address)) + ' on the available list — check before saying it’s available.' : '';
-    $('apwAltLbl').innerHTML = (apw.kind === 'gone' ? '🏠 Suggest other available properties instead' : '🏠 Also suggest other available properties') + ' <span class="muted">(optional — up to 6)</span>';
+    $('apwAltLbl').innerHTML = apw.kind === 'gone' ? '🏠 Suggest other available properties instead <span class="muted">(optional — up to 6)</span>' : '🏠 Suggest a similar property instead <span class="muted">(picking one changes the message to “not available, but I have something similar”)</span>';
     $('apwAltPicked').innerHTML = apw.alts.map(function(x){ return '<div class="wa-picked"><span>✓ ' + esc(apwLine(x)) + '</span><button type="button" class="linkish" data-apw-rm="' + x.id + '">Remove</button></div>'; }).join('');
     apwList();
     var m = apwMsg(); $('apwText').value = m.body; $('apwSubj').value = m.subject;
@@ -10687,7 +10686,7 @@
   }, true);
   $('apwKinds').addEventListener('click', function(e){ var b = e.target.closest('[data-apw-kind]'); if (!b) return; apw.kind = b.dataset.apwKind; apw.touched = true; apwDraw(); });
   $('apwAltQ').addEventListener('input', apwList);
-  $('apwAltList').addEventListener('click', function(e){ var b = e.target.closest('[data-apw-alt]'); if (!b) return; var x = avItems.filter(function(i){ return String(i.id) === b.dataset.apwAlt; })[0]; if (x && apw.alts.length < 6) apw.alts.push(x); apwDraw(); });
+  $('apwAltList').addEventListener('click', function(e){ var b = e.target.closest('[data-apw-alt]'); if (!b) return; var x = avItems.filter(function(i){ return String(i.id) === b.dataset.apwAlt; })[0]; if (x && apw.alts.length < 6) apw.alts.push(x); if (apw.kind === 'view') { apw.kind = 'gone'; apw.touched = true; } apwDraw(); });
   $('apwAltPicked').addEventListener('click', function(e){ var b = e.target.closest('[data-apw-rm]'); if (!b) return; apw.alts = apw.alts.filter(function(x){ return String(x.id) !== b.dataset.apwRm; }); apwDraw(); });
   function apwClose(){ $('apwModal').hidden = true; apw = null; }
   $('apwX').addEventListener('click', apwClose); $('apwCancel').addEventListener('click', apwClose);
