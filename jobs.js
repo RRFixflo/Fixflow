@@ -10211,7 +10211,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function payTrustLines(pdfUrl) {
     const t = payTrust(), own = /estallion/i.test(t.payee) || !t.payee;
     return [
-      [own ? 'Why the account is in the name ' + t.company : 'Who you are paying', t.company + ' trading as Residential Realtors (registered in England, company no. ' + t.company_no + ', ' + t.address + '), so payments to us go to the company\'s bank account. You can check the company on Companies House.', t.ch_url, 'Check on Companies House'],
+      [own ? 'Why the account is in the name ' + t.company : 'Who you are paying', t.company + ' trading as Residential Realtors (registered in England, company no. ' + t.company_no + ', ' + t.address + '), so payments to us go to the company\'s bank account.'],
       ['Your money is protected', 'Propertymark Client Money Protection, membership no. ' + t.cmp + (t.propertymark ? '. Propertymark member no. ' + t.propertymark : '') + '. Redress: The Property Ombudsman' + (t.tpo ? ', membership no. ' + t.tpo : '') + '.'],
       ['Your written holding deposit agreement', 'The holding deposit terms you read and signed with your offer, including when it is and isn\'t refunded, are in your signed agreement. In short: it is one week\'s rent and goes towards your first month\'s rent; if the landlord rejects your offer or withdraws the property it is returned within 24 hours; it is only kept in the cases you ticked (for example if you withdraw, fail the right to rent check, give misleading information, or don\'t complete referencing or sign in time).', pdfUrl, 'Download your signed agreement (PDF)']
     ];
