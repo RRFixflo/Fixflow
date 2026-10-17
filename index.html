@@ -1525,7 +1525,7 @@
     </div>
     <div class="note-box" id="manualNote" style="display:none">
       <strong>Attach the PDF before sending</strong><br>
-      Email links can't attach files automatically. Once you've downloaded the PDF above, attach it in the email that opens, addressed to jayk@residentialrealtors.co.uk, before sending.
+      Email links can't attach files automatically. Once you've downloaded the PDF above, attach it in the email that opens, addressed to info@residentialrealtors.co.uk, before sending.
     </div>
     <div class="note-box" id="sentNote" style="display:none;">
       <strong id="sentNoteHeading">Sent to Residential Realtors</strong><br>
@@ -2792,7 +2792,7 @@
   document.getElementById('openMail').addEventListener('click', function(){
     var subject = 'Repair report — ' + state.category + ' — ' + state.address;
     var body = buildReportText() + '\n\n(Please find the PDF report attached — download it using the button above first, then attach it here.)';
-    var href = 'mailto:jayk@residentialrealtors.co.uk?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    var href = 'mailto:info@residentialrealtors.co.uk?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     window.location.href = href;
   });
 

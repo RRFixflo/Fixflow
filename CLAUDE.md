@@ -147,6 +147,7 @@ Public website changes must respect `prefers-reduced-motion`, work without horiz
 - Offer cards: “💷 Deposit received” and “Amount received” ask how much arrived in a box on the card itself (`offAmountBox`: amount pre-filled with the holding deposit, Save / Cancel) — not a browser pop-up, which some phone browsers (e.g. opened from WhatsApp or an email app) silently block.
 
 - Requests from the staff app never hang: `api()` gives up after 25 s (2 min for uploads over ~200 KB) and answers `{ ok: false, error: 'network', status: 0 }` instead of rejecting, so buttons reset — an iPhone left “✓ Mark job completed” on “Saving…” for 8 minutes (the request never reached the server; the server answers in ~20 ms). “Mark job completed” retries once by itself (“Still trying…”; completing twice is harmless), then says “Couldn’t reach Fixflow — check your signal…”.
+- Repair report emails go to `REPORT_TO_EMAIL` (set in Railway — the owner's own address; never write it in the code, the owner asked; the code's fallback is info@). The repair form's “email it yourself” fallback (when sending fails) uses info@.
 - No "Last updated" label in the website header (removed at the owner's request).
 - No notifications about properties that share photos — the report stays on the Website visitors page only.
 - Staff alerts for viewings and valuation requests go to all staff.
