@@ -669,6 +669,7 @@
   .mypw-err { background: var(--dk-bg-fdecec, #fdecec); color: var(--dk-fg-b42318, #b42318); border-radius: 10px; padding: 8px 10px; font-size: .86rem; font-weight: 600; margin: 6px 0 0; }
   .mypw-act { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   #mlModal { z-index: 60; }
+  .apw-state { margin: 0; padding: 8px 10px; border-radius: 10px; font-size: .86rem; } .apw-state.warn { background: var(--dk-bg-fffaeb, #FFFAEB); color: var(--dk-fg-93370d, #93370D); border: 1px solid var(--dk-bd-fedf89, #FEDF89); } .apw-state.ok { background: var(--dk-bg-ecfdf3, #ECFDF3); color: var(--dk-fg-067647, #067647); }
   .inf-intro { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 14px; margin: 0 0 12px; border: 1px dashed var(--dk-bd-b2ccff, #B2CCFF); border-radius: 12px; background: var(--dk-bg-f5f8ff, #F5F8FF); } .inf-intro span { flex: 1 1 260px; font-size: .86rem; color: var(--muted, #667085); }
   .inf-people { margin: 8px 0 0; font-size: .88rem; display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
   .inf-form { width: min(680px, 100%); max-height: 92vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; } .inf-mh { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -10581,14 +10582,35 @@
   function apwLine(x){ return (x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : 'Home') + ' — ' + publicAddr(x.address) + [x.rent_pcm ? ' · ' + gbp(Number(x.rent_pcm)) + ' pcm' : '', x.vacant ? ' · available now' : x.available_from ? ' · available from ' + avDay(x.available_from) : ''].join(''); }
   function apwLink(x){ var L = avLinks(x); return x.gnomen_id ? 'https://www.residentialrealtors.co.uk/property/' + x.gnomen_id : L.rightmove || ''; }
   function apwKey(a){ return String(a || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
-  function apwOwn(){ var k = apw.g.address ? apwKey(publicAddr(apw.g.address)) : ''; return k ? (avItems || []).filter(function(x){ return x.status === 'available' && apwKey(publicAddr(x.address)) === k; })[0] : null; }
+  function apwOwn(){ var k = apw.g.address ? apwKey(publicAddr(apw.g.address)) : ''; var h = k ? (avItems || []).filter(function(x){ return x.status === 'available' && apwKey(publicAddr(x.address)) === k; })[0] : null;
+    if (!h && avItems && avItems.length) { var hh = applHome(apw.g); if (hh && hh.status === 'available') h = hh; } return h; }
+  // Is the home they asked about still available? Starts the window on the right message: "No longer available" (with
+  // similar homes already picked) when it's let / withdrawn or not on the available list — the owner asked, after an
+  // applicant was told a let flat was "still available".
+  function apwState(){
+    var g = apw.g; if (!g.address || g.address === '(no property given)' || !avItems || !avItems.length) return '';
+    if (apwOwn()) return 'available';
+    var mt = applMatch(g); if (mt && mt.kind === 'dream') return 'available';
+    var h = applHome(g); return h ? 'gone' : 'unknown';
+  }
+  function apwSimilar(){
+    var g = apw.g, h = applHome(g), pc = String((h && h.address) || g.address || '').toUpperCase().match(/\b([A-Z]{1,2}\d[A-Z\d]?)(?:\s*\d[A-Z]{2})?\b/), area = pc ? pc[1] : '';
+    var beds = h && h.beds != null ? Number(h.beds) : null, rent = (h && Number(h.rent_pcm)) || Number(applRent(g)) || 0;
+    var list = (avItems || []).filter(function(x){ return x.status === 'available' && x !== h; }).map(function(x){
+      var xpc = String(x.address || '').toUpperCase().match(/\b([A-Z]{1,2}\d[A-Z\d]?)(?:\s*\d[A-Z]{2})?\b/), sc = 0;
+      if (area && xpc && xpc[1] === area) sc += 3; else if (area && xpc && xpc[1].replace(/\d.*$/, '') === area.replace(/\d.*$/, '')) sc += 1;
+      if (beds != null && Number(x.beds) === beds) sc += 2;
+      if (rent && Number(x.rent_pcm)) sc -= Math.abs(Number(x.rent_pcm) - rent) / Math.max(rent, 1) * 3;
+      return { x: x, sc: sc }; }).filter(function(o){ return o.sc >= 2; }).sort(function(a, b){ return b.sc - a.sc; });
+    return list.slice(0, 2).map(function(o){ return o.x; });
+  }
   function apwMsg(){
     var g = apw.g, first = String(g.name || '').trim().split(/\s+/)[0] || 'there', addr = g.address && g.address !== '(no property given)' ? publicAddr(g.address).split(',').slice(0, 2).join(',') : '';
     var me = String((meta.user && meta.user.name) || '').replace(/^(Owner|Offers staff)$/, ''), sign = '\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors\n0207 096 8131';
     var alts = apw.alts.map(function(x){ return apwLine(x) + (apwLink(x) ? '\n' + apwLink(x) : ''); }).join('\n\n'), many = apw.alts.length > 1;
     if (apw.kind === 'usual') { var m = leadMsg(g); return { subject: m.subject, body: m.body }; }
-    if (apw.kind === 'gone') return { subject: 'Update on ' + (addr || 'your enquiry'), body: 'Hi ' + first + ',\n\nThank you for your interest' + (addr ? ' in ' + addr : '') + '. Unfortunately this property is no longer available.' +
-      (alts ? '\n\nHowever, we have ' + (many ? 'some similar homes' : 'a similar home') + ' that might suit you:\n\n' + alts + '\n\nWould you like to arrange a viewing?' : '\n\nWe have new homes coming up all the time — let us know what you’re looking for (area, budget, bedrooms and move-in date) and we’ll send you the best matches.') + sign };
+    if (apw.kind === 'gone') return { subject: (addr ? addr + ' — no longer available' : 'Update on your enquiry') + (alts ? ', but we have ' + (many ? 'similar homes' : 'something similar') : ''), body: 'Hi ' + first + ',\n\nThank you for your enquiry' + (addr ? ' about ' + addr : '') + '. Unfortunately the property you enquired about is no longer available.' +
+      (alts ? '\n\nHowever, we have ' + (many ? 'some similar homes' : 'something similar') + ' that might suit you:\n\n' + alts + '\n\nWould you like to arrange a viewing? Just reply with a few days and times that suit you.' : '\n\nWe have new homes coming up all the time — let us know what you’re looking for (area, budget, bedrooms and move-in date) and we’ll send you the best matches.') + sign };
     var own = apwOwn(), ownLink = own ? apwLink(own) : '';
     return { subject: (addr ? addr + ' is available to view' : 'Arranging your viewing'), body: 'Hi ' + first + ',\n\nThank you for your enquiry' + (addr ? ' about ' + addr : '') + '. Good news — it’s still available and we’d love to show it to you.' + (ownLink ? '\n\nPhotos and details: ' + ownLink : '') +
       '\n\nWhen would you be available for a viewing? Please send us a few days and times that suit you and we’ll book you in.' +
@@ -10597,6 +10619,15 @@
   function apwDraw(){
     [].forEach.call($('apwKinds').querySelectorAll('[data-apw-kind]'), function(b){ b.classList.toggle('on', b.dataset.apwKind === apw.kind); });
     $('apwAltBox').hidden = apw.kind === 'usual';
+    var st = apwState(), sb = $('apwState');
+    if (!sb) { $('apwKinds').insertAdjacentHTML('afterend', '<p class="apw-state" id="apwState"></p>'); sb = $('apwState'); }
+    if (apw.loading) st = 'loading';
+    sb.hidden = !st || st === 'available' && apw.kind === 'view';
+    sb.className = 'apw-state ' + (st === 'available' ? 'ok' : 'warn');
+    sb.innerHTML = st === 'available' ? '✅ ' + esc(shortAddr(apw.g.address)) + ' is on the available list.' + (apw.kind === 'gone' ? ' Are you sure it’s no longer available?' : '')
+      : st === 'gone' ? '⚠ ' + esc(shortAddr(apw.g.address)) + ' is no longer available (let or withdrawn)' + (apw.kind === 'view' ? ' — don’t tell them it’s available.' : ' — similar homes are suggested below.')
+      : st === 'loading' ? '⏳ Checking whether ' + esc(shortAddr(apw.g.address)) + ' is still available…'
+      : st === 'unknown' ? '⚠ Couldn’t find ' + esc(shortAddr(apw.g.address)) + ' on the available list — check before saying it’s available.' : '';
     $('apwAltLbl').innerHTML = (apw.kind === 'gone' ? '🏠 Suggest other available properties instead' : '🏠 Also suggest other available properties') + ' <span class="muted">(optional — up to 6)</span>';
     $('apwAltPicked').innerHTML = apw.alts.map(function(x){ return '<div class="wa-picked"><span>✓ ' + esc(apwLine(x)) + '</span><button type="button" class="linkish" data-apw-rm="' + x.id + '">Remove</button></div>'; }).join('');
     apwList();
@@ -10616,8 +10647,12 @@
     $('apwGo').className = ch === 'wa' ? 'btn wa-btn' : 'btn primary';
     $('apwSubjRow').hidden = ch === 'wa';
     $('apwWho').textContent = 'To ' + (g.name || 'the applicant') + ' · ' + (ch === 'wa' ? g.phone : g.email) + (g.address && g.address !== '(no property given)' ? ' · asked about ' + shortAddr(g.address) : '');
-    $('apwAltQ').value = ''; $('apwModal').hidden = false; apwDraw();
-    if (!avItems || !avItems.length) api('GET', '/api/admin/available').then(function(d){ if (d && d.ok) { avItems = d.items || []; avLinkData = d.links || {}; } if (apw) apwDraw(); });
+    $('apwAltQ').value = ''; $('apwModal').hidden = false;
+    var pick = function(){ apw.loading = false; $('apwGo').disabled = false; var st = apwState(); if (!apw.touched && (st === 'gone' || st === 'unknown')) { apw.kind = 'gone'; if (!apw.alts.length) apw.alts = apwSimilar(); } apwDraw(); };
+    // Until the available list is in, say so and hold the Send button — so nobody is told a let home is "still available".
+    if (!avItems || !avItems.length) { apw.loading = !!(g.address && g.address !== '(no property given)'); $('apwGo').disabled = apw.loading; apwDraw();
+      api('GET', '/api/admin/available').then(function(d){ if (d && d.ok) { avItems = d.items || []; avLinkData = d.links || {}; } if (apw && apw.g === g) pick(); }); }
+    else pick();
   }
   // Mortgage rental letter enquiry → Appraisal set to "Mortgage rental letter", filled in from the enquiry, and the
   // search for similar homes to let started straight away (the owner asked for it at the click of a button).
@@ -10650,7 +10685,7 @@
     var r = a.dataset.waRef || a.dataset.mlRef, g = (crm.gmap || {})[r] || crm.items.filter(function(x){ return x.ref === r; })[0]; if (!g) return;
     e.preventDefault(); e.stopPropagation(); apwOpen(g, a.dataset.waRef ? 'wa' : 'email');
   }, true);
-  $('apwKinds').addEventListener('click', function(e){ var b = e.target.closest('[data-apw-kind]'); if (!b) return; apw.kind = b.dataset.apwKind; apwDraw(); });
+  $('apwKinds').addEventListener('click', function(e){ var b = e.target.closest('[data-apw-kind]'); if (!b) return; apw.kind = b.dataset.apwKind; apw.touched = true; apwDraw(); });
   $('apwAltQ').addEventListener('input', apwList);
   $('apwAltList').addEventListener('click', function(e){ var b = e.target.closest('[data-apw-alt]'); if (!b) return; var x = avItems.filter(function(i){ return String(i.id) === b.dataset.apwAlt; })[0]; if (x && apw.alts.length < 6) apw.alts.push(x); apwDraw(); });
   $('apwAltPicked').addEventListener('click', function(e){ var b = e.target.closest('[data-apw-rm]'); if (!b) return; apw.alts = apw.alts.filter(function(x){ return String(x.id) !== b.dataset.apwRm; }); apwDraw(); });
