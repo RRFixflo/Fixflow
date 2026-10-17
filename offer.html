@@ -953,7 +953,7 @@
     return bank ? '<div class="bank"><div><span>Account name</span><b>' + esc(bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(bank.account) + '</b></div>' + (bank.iban ? '<div><span>IBAN <small style="color:var(--faint)">(paying from abroad)</small></span><b>' + esc(bank.iban) + '</b></div>' : '') + (bank.swift ? '<div><span>SWIFT / BIC</span><b>' + esc(bank.swift) + '</b></div>' : '') + '<div><span>Amount</span><b>' + gbp(amount || 0) + '</b></div><div><span>Reference</span><b>' + esc(ref) + '</b></div></div><p class="hint" style="margin:-6px 0 12px">Please use exactly this payment reference (no spaces) so we can match your payment to your offer.</p>'
       : '<p>We’ll send you our bank details to pay it.</p>';
   }
-  // "Before you pay": who the account belongs to, our protection numbers, the signed terms and a viewing first.
+  // "Before you pay": who the account belongs to, our protection numbers and the signed terms.
   function trustHtml(t, tok){
     if (!t) return '';
     var own = !t.payee || /estallion/i.test(t.payee);
@@ -962,7 +962,6 @@
       row('🏢', own ? 'Why the account is in the name ' + esc(t.company) : 'Who you’re paying', 'Residential Realtors is the trading name of <b>' + esc(t.company) + '</b> (registered in England, company no. ' + esc(t.company_no) + ', ' + esc(t.address) + '), so payments to us go to the company’s bank account.', '<a target="_blank" rel="noopener" href="' + esc(t.ch_url) + '">Check us on Companies House ↗</a>') +
       row('🛡️', 'Your money is protected', 'Propertymark Client Money Protection, membership no. <b>' + esc(t.cmp) + '</b>' + (t.propertymark ? ' · Propertymark member no. <b>' + esc(t.propertymark) + '</b>' : '') + '. Redress scheme: The Property Ombudsman' + (t.tpo ? ', membership no. <b>' + esc(t.tpo) + '</b>' : '') + '.') +
       row('📄', 'Your written holding deposit agreement', 'The terms you signed — including when the holding deposit is and isn’t refunded — are in your signed agreement. If the landlord rejects your offer or withdraws the property, it’s returned within 24 hours; once accepted it goes towards your first month’s rent.', tok ? '<a target="_blank" rel="noopener" href="/api/offers/track/' + esc(tok) + '/offer.pdf">⬇ Download your signed agreement (PDF)</a>' : '') +
-      row('🎥', 'Want to see it again first?', 'We’re happy to arrange another viewing or a live video viewing before you pay — call <a href="tel:02070968131">' + esc(t.phone) + '</a> or email <a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a>.') +
       '</div>';
   }
   function trackBox(url){
