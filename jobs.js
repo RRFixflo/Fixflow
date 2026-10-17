@@ -10700,6 +10700,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       notes.push(cr.length ? 'Offer credited to ' + cr.map(function (c) { return c.name + (cr.length > 1 ? ' (' + c.share + '%)' : ''); }).join(' and ') : 'Offer credit cleared');
     }
     if (b.refund_asked === true) dataSets.push("jsonb_build_object('refund_asked', to_jsonb(now()))");
+    // Holding deposit marked received for the first time: the applicant is emailed their receipt (after the update below).
+    const paidNew = b.paid === true ? (await p.query("SELECT id FROM offers WHERE id = $1 AND paid_at IS NULL AND (data->>'received_emailed_at') IS NULL", [id])).rows[0] : null;
     // Refund marked as sent for the first time: the applicant gets a confirmation email (after the update below).
     const refundNew = b.refunded === true ? (await p.query("SELECT id, lead_name, lead_email, property_address, paid_at, data FROM offers WHERE id = $1 AND (data->>'refunded_at') IS NULL", [id])).rows[0] : null;
     if (typeof b.refunded === 'boolean') { dataSets.push("jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
@@ -10717,6 +10719,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
       refundEmailed = await refundMail(req, { email: refundNew.lead_email, name: refundNew.lead_name, address: refundNew.property_address, ref: oref, what: 'holding deposit', amount: rd.paid_amount != null ? Number(rd.paid_amount) : (rd.money || {}).holding, refund: rd.refund }).catch(function () { return false; });
       if (refundEmailed) await p.query("UPDATE offers SET log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Refund confirmation emailed to ' + refundNew.lead_email)])]).catch(function () {});
     }
+    let receiptEmailed = null;
+    if (paidNew) {
+      const full = (await p.query('SELECT * FROM offers WHERE id = $1 AND paid_at IS NOT NULL', [id])).rows[0];
+      receiptEmailed = full ? await offerReceivedMail(req, p, full).catch(function (e) { console.error('Holding deposit receipt email failed:', e.message); return false; }) : null;
+      if (receiptEmailed) await p.query("UPDATE offers SET data = data || jsonb_build_object('received_emailed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Holding deposit receipt emailed to ' + full.lead_email)])]).catch(function () {});
+    }
     // Rejected: email the applicant (with the counter-offer link when invited, else the refund link if they paid).
     let rejectEmailed = null;
     if (rj && rj.email !== false) {
@@ -10724,8 +10732,28 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await p.query("UPDATE offers SET log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, rejectEmailed ? 'Applicant emailed that the offer wasn’t accepted' + ((ro.data || {}).counter_invite ? ', with the counter-offer link' : '') + ' (' + ro.lead_email + ')' : 'Offer rejected email not sent' + (ro.lead_email ? '' : ' — no email address'))])]).catch(function () {});
     }
     if (said) offerAlert({ title: said[0] + shortAddrText(ro.property_address), message: (ro.lead_name || 'Applicant') + ' · ' + gbp(ro.offer_pw) + ' pw · ' + oref + (b.paid === true ? ' · ' + gbp(amt != null ? amt : ((ro.data || {}).money || {}).holding) + ' received' + (amt != null && Math.abs(amt - Number(((ro.data || {}).money || {}).holding || 0)) > 0.009 ? ' (holding deposit ' + gbp(((ro.data || {}).money || {}).holding) + ')' : '') : '') + tag, tags: said[1] }, { office: byStaff });
-    res.json({ ok: true, refund_emailed: refundEmailed, reject_emailed: rejectEmailed });
+    res.json({ ok: true, refund_emailed: refundEmailed, reject_emailed: rejectEmailed, receipt_emailed: receiptEmailed });
   }));
+  // "We've received your holding deposit": sent once, the first time it's marked received — the amount, the property
+  // and reference, what happens next, their tracking link and the receipt PDF attached (kept in Sent emails).
+  async function offerReceivedMail(req, p, o) {
+    const to = String(o.lead_email || '').trim(); if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(to) || !canEmail() || !sendEmail) return false;
+    const d = o.data || {}, ref = 'OF' + String(o.id).padStart(4, '0'), amt = d.paid_amount != null ? Number(d.paid_amount) : Number((d.money || {}).holding) || 0;
+    const due = Number((d.money || {}).holding) || 0, short = due && amt + 0.005 < due ? Math.round((due - amt) * 100) / 100 : 0;
+    const track = o.track_token ? (OFFER_ORIGIN || PUBLIC_URL) + '/offer/track/' + o.track_token : '';
+    const subject = 'Holding deposit received — ' + shortAddrText(o.property_address) + ' (' + ref + ')';
+    const text = 'Dear ' + (String(o.lead_name || '').trim().split(/\s+/)[0] || 'Applicant') + ',\n\n' +
+      'Thank you — we have received your holding deposit' + (amt ? ' of ' + gbp(amt) : '') + ' for ' + o.property_address + ' (reference ' + ref + '). Your receipt is attached.\n\n' +
+      (short ? 'The holding deposit is ' + gbp(due) + ', so ' + gbp(short) + ' is still to pay — please send it using the same bank details and reference.\n\n' : '') +
+      (o.status === 'accepted' ? 'Your offer has been accepted, and we will be in touch about referencing and the tenancy agreement.' : 'We will now put your offer to the landlord and let you know their decision.') +
+      ' Once your offer is accepted, the holding deposit goes towards your first month\'s rent.' +
+      (track ? '\n\nYou can follow your offer, and download your receipt and signed agreement, here: ' + track : '') +
+      '\n\nIf you have any questions, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\nResidential Realtors';
+    const atts = [{ filename: 'Holding deposit receipt - ' + ref + '.pdf', content: Buffer.from(await receiptPdf(o)).toString('base64') }];
+    const r = await sendEmail({ to: [to], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, 'Holding deposit received'), attachments: atts }).catch(function (e) { return { ok: false, error: e.message }; });
+    logSent(req, [to], [], 'info@residentialrealtors.co.uk', subject, text + '\n\n[Attached: ' + atts[0].filename + ']', r, r && r.ok ? await keepEmailFiles(p, atts) : []);
+    return !!(r && r.ok);
+  }
   // "Your offer wasn't accepted" — kind, with the reason when it's one we can share, the counter-offer link (their
   // tracking page, where they commit to it) or, when they paid and aren't invited to counter, the refund link.
   async function offerRejectMail(req, o) {
